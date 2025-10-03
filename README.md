@@ -1,4 +1,4 @@
-# iPerf3 Exporter (Enhanced by ThanhDeptr)
+# iPerf3 Exporter v2 (Enhanced by ThanhDeptr)
 
 A Prometheus exporter for iPerf3 network performance metrics with enhanced features.
 
@@ -321,4 +321,4 @@ Additional features and improvements have been added by **ThanhDeptr**:
 This project is released under Apache License 2.0, see [LICENSE](https://github.com/edgard/iperf3_exporter/blob/master/LICENSE).
 
 **Original Repository**: [edgard/iperf3_exporter](https://github.com/edgard/iperf3_exporter)  
-**Enhanced Fork**: [Thanhdeptr/iperf3_exporter](https://github.com/Thanhdeptr/iperf3_exporter)
+**Enhanced Fork v2**: [Thanhdeptr/iperf3_exporter.v2](https://github.com/Thanhdeptr/iperf3_exporter.v2)
