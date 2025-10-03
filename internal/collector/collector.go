@@ -54,20 +54,24 @@ type ProbeConfig struct {
 	ReverseMode bool
 	UDPMode     bool
 	Bitrate     string
+	BindAddress string // Source IP address to bind to (-B parameter)
+	Parallel    int    // Number of parallel streams (-P parameter)
 }
 
 // Collector implements the prometheus.Collector interface for iperf3 metrics.
 type Collector struct {
-	target  string
-	port    int
-	period  time.Duration
-	timeout time.Duration
-	mutex   sync.RWMutex
-	reverse bool
-	udpMode bool
-	bitrate string
-	logger  *slog.Logger
-	runner  iperf.Runner
+	target      string
+	port        int
+	period      time.Duration
+	timeout     time.Duration
+	mutex       sync.RWMutex
+	reverse     bool
+	udpMode     bool
+	bitrate     string
+	bindAddress string
+	parallel    int
+	logger      *slog.Logger
+	runner      iperf.Runner
 
 	// Metrics
 	up              *prometheus.Desc
@@ -99,15 +103,17 @@ func NewCollectorWithRunner(config ProbeConfig, logger *slog.Logger, runner iper
 	labels := []string{"target", "port"}
 
 	return &Collector{
-		target:  config.Target,
-		port:    config.Port,
-		period:  config.Period,
-		timeout: config.Timeout,
-		reverse: config.ReverseMode,
-		udpMode: config.UDPMode,
-		bitrate: config.Bitrate,
-		logger:  logger,
-		runner:  runner,
+		target:      config.Target,
+		port:        config.Port,
+		period:      config.Period,
+		timeout:     config.Timeout,
+		reverse:     config.ReverseMode,
+		udpMode:     config.UDPMode,
+		bitrate:     config.Bitrate,
+		bindAddress: config.BindAddress,
+		parallel:    config.Parallel,
+		logger:      logger,
+		runner:      runner,
 
 		// Define metrics with labels
 		up: prometheus.NewDesc(
@@ -225,6 +231,8 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 		ReverseMode: c.reverse,
 		UDPMode:     c.udpMode,
 		Bitrate:     c.bitrate,
+		BindAddress: c.bindAddress,
+		Parallel:    c.parallel,
 		Logger:      c.logger,
 	})
 

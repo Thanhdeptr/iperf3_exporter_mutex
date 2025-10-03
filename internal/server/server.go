@@ -167,6 +167,29 @@ func (s *Server) probeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Parse bind_address parameter
+	bindAddress := r.URL.Query().Get("bind_address")
+
+	// Parse parallel parameter
+	var parallel int
+	parallelParam := r.URL.Query().Get("parallel")
+	if parallelParam != "" {
+		var err error
+		parallel, err = strconv.Atoi(parallelParam)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("'parallel' parameter must be an integer: %s", err), http.StatusBadRequest)
+			collector.IperfErrors.Inc()
+
+			return
+		}
+		if parallel < 1 {
+			http.Error(w, "'parallel' parameter must be greater than 0", http.StatusBadRequest)
+			collector.IperfErrors.Inc()
+
+			return
+		}
+	}
+
 	// Note: In UDP mode, iperf3 requires a bitrate (defaults to 1Mbps if not specified)
 	// Add a log message for clarity if udpMode is enabled but no bitrate specified
 	if udpMode && bitrate == "" {
@@ -234,6 +257,8 @@ func (s *Server) probeHandler(w http.ResponseWriter, r *http.Request) {
 		ReverseMode: reverseMode,
 		UDPMode:     udpMode,
 		Bitrate:     bitrate,
+		BindAddress: bindAddress,
+		Parallel:    parallel,
 	}
 
 	c := collector.NewCollector(probeConfig, s.logger)

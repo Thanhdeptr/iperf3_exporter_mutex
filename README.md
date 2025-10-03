@@ -125,6 +125,8 @@ When making requests to the `/probe` endpoint, the following parameters can be u
 | `udp_mode` | Run iperf3 in UDP mode instead of TCP | false |
 | `bitrate` | Target bitrate in bits/sec (format: #[KMG][/#]). For UDP mode, iperf3 defaults to 1 Mbit/sec if not specified. | - |
 | `period` | Duration of the iperf3 test | 5s |
+| `bind_address` | Source IP address to bind to (iperf3 -B parameter) | - |
+| `parallel` | Number of parallel streams (iperf3 -P parameter) | - |
 
 ### Checking the Results
 
@@ -153,6 +155,10 @@ scrape_configs:
       # bitrate: ['100M']
       # Optional: set test period
       # period: ['10s']
+      # Optional: bind to specific source IP
+      # bind_address: ['192.168.1.100']
+      # Optional: use parallel streams
+      # parallel: ['4']
     relabel_configs:
       - source_labels: [__address__]
         target_label: __param_target
