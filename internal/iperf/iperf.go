@@ -135,8 +135,6 @@ type Config struct {
 	ReverseMode bool
 	UDPMode     bool
 	Bitrate     string
-	BindAddress string // Source IP address to bind to (-B parameter)
-	Parallel    int    // Number of parallel streams (-P parameter)
 	Logger      *slog.Logger
 }
 
@@ -180,16 +178,6 @@ func (r *DefaultRunner) Run(ctx context.Context, cfg Config) Result {
 		"-t", strconv.FormatFloat(cfg.Period.Seconds(), 'f', 0, 64),
 		"-c", cfg.Target,
 		"-p", strconv.Itoa(cfg.Port),
-	}
-
-	// Add bind address if specified
-	if cfg.BindAddress != "" {
-		iperfArgs = append(iperfArgs, "-B", cfg.BindAddress)
-	}
-
-	// Add parallel streams if specified
-	if cfg.Parallel > 0 {
-		iperfArgs = append(iperfArgs, "-P", strconv.Itoa(cfg.Parallel))
 	}
 
 	if cfg.ReverseMode {
@@ -237,8 +225,6 @@ func (r *DefaultRunner) Run(ctx context.Context, cfg Config) Result {
 		"reverse", cfg.ReverseMode,
 		"udp", cfg.UDPMode,
 		"bitrate", cfg.Bitrate,
-		"bind_address", cfg.BindAddress,
-		"parallel", cfg.Parallel,
 	)
 
 	out, err := cmd.Output()

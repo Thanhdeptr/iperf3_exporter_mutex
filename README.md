@@ -1,10 +1,18 @@
-# iPerf3 Exporter
+# iPerf3 Exporter (Enhanced by ThanhDeptr)
 
-A Prometheus exporter for iPerf3 network performance metrics.
+A Prometheus exporter for iPerf3 network performance metrics with enhanced features.
+
+> **📌 This is a fork of [edgard/iperf3_exporter](https://github.com/edgard/iperf3_exporter) with additional enhancements by ThanhDeptr**
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/edgard/iperf3_exporter)](https://goreportcard.com/report/github.com/edgard/iperf3_exporter)
 [![Docker Pulls](https://img.shields.io/docker/pulls/ghcr.io/edgard/iperf3_exporter.svg)](https://github.com/users/edgard/packages/container/package/iperf3_exporter)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/edgard/iperf3_exporter/blob/master/LICENSE)
+
+## 🚀 Enhanced Features (by ThanhDeptr)
+
+- **Bind Address Support**: Configure specific network interfaces for iPerf3 tests
+- **Parallel Streams**: Improved performance with parallel stream functionality
+- **Enhanced Resource Management**: Better collector logic for optimal performance
 
 ## ⚠️ IMPORTANT: Docker Image Name Change
 
@@ -297,6 +305,20 @@ go build -o iperf3_exporter ./cmd/iperf3_exporter
 go test ./...
 ```
 
-## License
+## Credits & Attribution
+
+### Original Work
+This project is based on the excellent work by [edgard/iperf3_exporter](https://github.com/edgard/iperf3_exporter). All original functionality and architecture credits go to the original authors.
+
+### Enhancements
+Additional features and improvements have been added by **ThanhDeptr**:
+- Bind address configuration support
+- Parallel streams functionality  
+- Enhanced resource management and collector logic
+
+### License
 
 This project is released under Apache License 2.0, see [LICENSE](https://github.com/edgard/iperf3_exporter/blob/master/LICENSE).
+
+**Original Repository**: [edgard/iperf3_exporter](https://github.com/edgard/iperf3_exporter)  
+**Enhanced Fork**: [Thanhdeptr/iperf3_exporter](https://github.com/Thanhdeptr/iperf3_exporter)
