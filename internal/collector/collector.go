@@ -230,11 +230,16 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 
 	// Check if bidirectional mode is enabled (enhanced feature by ThanhDeptr)
 	if c.bidirectional {
-		// Run both upload and download tests
-		c.logger.Debug("Running bidirectional test", "target", c.target, "port", c.port)
+		// Run both upload and download tests sequentially to avoid conflicts
+		c.logger.Debug("Running bidirectional test sequentially", "target", c.target, "port", c.port)
+		
+		// Create separate context for each test to avoid timeout issues
+		uploadCtx, uploadCancel := context.WithTimeout(context.Background(), c.timeout)
+		defer uploadCancel()
 		
 		// Run upload test (no -R flag)
-		uploadResult := c.runner.Run(ctx, iperf.Config{
+		c.logger.Debug("Starting upload test", "target", c.target, "bind_address", c.bindAddress)
+		uploadResult := c.runner.Run(uploadCtx, iperf.Config{
 			Target:      c.target,
 			Port:        c.port,
 			Period:      c.period,
@@ -247,8 +252,16 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 			Logger:      c.logger,
 		})
 
+		// Small delay between tests to avoid resource conflicts
+		time.Sleep(1 * time.Second)
+
+		// Create separate context for download test
+		downloadCtx, downloadCancel := context.WithTimeout(context.Background(), c.timeout)
+		defer downloadCancel()
+
 		// Run download test (with -R flag)
-		downloadResult := c.runner.Run(ctx, iperf.Config{
+		c.logger.Debug("Starting download test", "target", c.target, "bind_address", c.bindAddress)
+		downloadResult := c.runner.Run(downloadCtx, iperf.Config{
 			Target:      c.target,
 			Port:        c.port,
 			Period:      c.period,
