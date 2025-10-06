@@ -92,6 +92,13 @@ type Collector struct {
 	recvJitter      *prometheus.Desc
 	recvLostPackets *prometheus.Desc
 	recvLostPercent *prometheus.Desc
+	// Calculated metrics (Enhanced by ThanhDeptr)
+	bandwidthUploadMbps   *prometheus.Desc
+	bandwidthDownloadMbps *prometheus.Desc
+	packetLossUpload      *prometheus.Desc
+	packetLossDownload    *prometheus.Desc
+	latencyUpload         *prometheus.Desc
+	latencyDownload       *prometheus.Desc
 }
 
 // NewCollector creates a new Collector for iperf3 metrics.
@@ -191,6 +198,37 @@ func NewCollectorWithRunner(config ProbeConfig, logger *slog.Logger, runner iper
 			"Percentage of packets lost at the receiver in the last UDP test run.",
 			labels, nil,
 		),
+		// Calculated metrics (Enhanced by ThanhDeptr)
+		bandwidthUploadMbps: prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, "", "bandwidth_upload_mbps"),
+			"Upload bandwidth in Mbps (calculated from sent bytes and time).",
+			labels, nil,
+		),
+		bandwidthDownloadMbps: prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, "", "bandwidth_download_mbps"),
+			"Download bandwidth in Mbps (calculated from received bytes and time).",
+			labels, nil,
+		),
+		packetLossUpload: prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, "", "packet_loss_upload_percent"),
+			"Upload packet loss percentage (calculated from sent vs received bytes).",
+			labels, nil,
+		),
+		packetLossDownload: prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, "", "packet_loss_download_percent"),
+			"Download packet loss percentage (calculated from sent vs received bytes).",
+			labels, nil,
+		),
+		latencyUpload: prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, "", "latency_upload_ms"),
+			"Upload latency in milliseconds (calculated from retransmits and time).",
+			labels, nil,
+		),
+		latencyDownload: prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, "", "latency_download_ms"),
+			"Download latency in milliseconds (calculated from retransmits and time).",
+			labels, nil,
+		),
 	}
 }
 
@@ -214,6 +252,14 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.recvJitter
 	ch <- c.recvLostPackets
 	ch <- c.recvLostPercent
+
+	// Calculated metrics (Enhanced by ThanhDeptr)
+	ch <- c.bandwidthUploadMbps
+	ch <- c.bandwidthDownloadMbps
+	ch <- c.packetLossUpload
+	ch <- c.packetLossDownload
+	ch <- c.latencyUpload
+	ch <- c.latencyDownload
 }
 
 // Collect implements the prometheus.Collector interface.
@@ -334,6 +380,9 @@ func (c *Collector) processResult(ch chan<- prometheus.Metric, result iperf.Resu
 			ch <- prometheus.MustNewConstMetric(c.recvLostPackets, prometheus.GaugeValue, result.ReceivedLostPackets, labelValues...)
 			ch <- prometheus.MustNewConstMetric(c.recvLostPercent, prometheus.GaugeValue, result.ReceivedLostPercent, labelValues...)
 		}
+
+		// Calculate and emit computed metrics (Enhanced by ThanhDeptr)
+		c.emitCalculatedMetrics(ch, result, labelValues)
 	} else {
 		// Return common metrics with 0 values when iperf3 fails
 		ch <- prometheus.MustNewConstMetric(c.up, prometheus.GaugeValue, 0, labelValues...)
@@ -358,6 +407,55 @@ func (c *Collector) processResult(ch chan<- prometheus.Metric, result iperf.Resu
 			ch <- prometheus.MustNewConstMetric(c.recvLostPercent, prometheus.GaugeValue, 0, labelValues...)
 		}
 
+		// Emit zero values for calculated metrics on failure
+		c.emitCalculatedMetrics(ch, result, labelValues)
 		IperfErrors.Inc()
 	}
+}
+
+// emitCalculatedMetrics calculates and emits computed metrics (Enhanced by ThanhDeptr)
+func (c *Collector) emitCalculatedMetrics(ch chan<- prometheus.Metric, result iperf.Result, labelValues []string) {
+	// Calculate bandwidth in Mbps
+	var uploadMbps, downloadMbps float64
+	if result.SentSeconds > 0 {
+		uploadMbps = (result.SentBytes * 8) / (result.SentSeconds * 1000000) // Convert to Mbps
+	}
+	if result.ReceivedSeconds > 0 {
+		downloadMbps = (result.ReceivedBytes * 8) / (result.ReceivedSeconds * 1000000) // Convert to Mbps
+	}
+
+	// Calculate packet loss percentage
+	var uploadLoss, downloadLoss float64
+	if result.SentBytes > 0 {
+		uploadLoss = ((result.SentBytes - result.ReceivedBytes) / result.SentBytes) * 100
+		if uploadLoss < 0 {
+			uploadLoss = 0 // No negative loss
+		}
+	}
+	if result.ReceivedBytes > 0 {
+		downloadLoss = ((result.ReceivedBytes - result.SentBytes) / result.ReceivedBytes) * 100
+		if downloadLoss < 0 {
+			downloadLoss = 0 // No negative loss
+		}
+	}
+
+	// Calculate latency (rough estimation based on retransmits and time)
+	var uploadLatency, downloadLatency float64
+	if !result.UDPMode && result.SentSeconds > 0 {
+		// TCP mode: estimate latency from retransmits
+		uploadLatency = (result.Retransmits * 100) / result.SentSeconds // Rough estimate in ms
+		downloadLatency = (result.Retransmits * 100) / result.ReceivedSeconds // Rough estimate in ms
+	} else if result.UDPMode {
+		// UDP mode: use jitter as latency indicator
+		uploadLatency = result.SentJitter * 1000 // Convert to ms
+		downloadLatency = result.ReceivedJitter * 1000 // Convert to ms
+	}
+
+	// Emit calculated metrics
+	ch <- prometheus.MustNewConstMetric(c.bandwidthUploadMbps, prometheus.GaugeValue, uploadMbps, labelValues...)
+	ch <- prometheus.MustNewConstMetric(c.bandwidthDownloadMbps, prometheus.GaugeValue, downloadMbps, labelValues...)
+	ch <- prometheus.MustNewConstMetric(c.packetLossUpload, prometheus.GaugeValue, uploadLoss, labelValues...)
+	ch <- prometheus.MustNewConstMetric(c.packetLossDownload, prometheus.GaugeValue, downloadLoss, labelValues...)
+	ch <- prometheus.MustNewConstMetric(c.latencyUpload, prometheus.GaugeValue, uploadLatency, labelValues...)
+	ch <- prometheus.MustNewConstMetric(c.latencyDownload, prometheus.GaugeValue, downloadLatency, labelValues...)
 }
