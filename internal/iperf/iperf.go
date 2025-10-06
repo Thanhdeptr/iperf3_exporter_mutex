@@ -135,6 +135,8 @@ type Config struct {
 	ReverseMode bool
 	UDPMode     bool
 	Bitrate     string
+	BindAddress string // Source IP address to bind to (-B parameter) - Enhanced by ThanhDeptr
+	Parallel    int    // Number of parallel streams (-P parameter) - Enhanced by ThanhDeptr
 	Logger      *slog.Logger
 }
 
@@ -188,6 +190,15 @@ func (r *DefaultRunner) Run(ctx context.Context, cfg Config) Result {
 		iperfArgs = append(iperfArgs, "-u")
 	}
 
+	// Enhanced features by ThanhDeptr
+	if cfg.BindAddress != "" {
+		iperfArgs = append(iperfArgs, "-B", cfg.BindAddress)
+	}
+
+	if cfg.Parallel > 0 {
+		iperfArgs = append(iperfArgs, "-P", strconv.Itoa(cfg.Parallel))
+	}
+
 	// Apply bitrate:
 	// - For UDP: use specified bitrate or default to "1M" if none specified (iperf3 defaults to 1Mbps for UDP)
 	// - For TCP: only apply if explicitly specified (iperf3 defaults to unlimited for TCP)
@@ -225,6 +236,8 @@ func (r *DefaultRunner) Run(ctx context.Context, cfg Config) Result {
 		"reverse", cfg.ReverseMode,
 		"udp", cfg.UDPMode,
 		"bitrate", cfg.Bitrate,
+		"bind_address", cfg.BindAddress,
+		"parallel", cfg.Parallel,
 	)
 
 	out, err := cmd.Output()

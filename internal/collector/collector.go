@@ -47,31 +47,33 @@ var (
 
 // ProbeConfig represents the configuration for a single probe.
 type ProbeConfig struct {
-	Target      string
-	Port        int
-	Period      time.Duration
-	Timeout     time.Duration
-	ReverseMode bool
-	UDPMode     bool
-	Bitrate     string
-	BindAddress string // Source IP address to bind to (-B parameter)
-	Parallel    int    // Number of parallel streams (-P parameter)
+	Target         string
+	Port           int
+	Period         time.Duration
+	Timeout        time.Duration
+	ReverseMode    bool
+	Bidirectional  bool // Enhanced feature by ThanhDeptr: run both upload and download tests
+	UDPMode        bool
+	Bitrate        string
+	BindAddress    string // Source IP address to bind to (-B parameter)
+	Parallel       int    // Number of parallel streams (-P parameter)
 }
 
 // Collector implements the prometheus.Collector interface for iperf3 metrics.
 type Collector struct {
-	target      string
-	port        int
-	period      time.Duration
-	timeout     time.Duration
-	mutex       sync.RWMutex
-	reverse     bool
-	udpMode     bool
-	bitrate     string
-	bindAddress string
-	parallel    int
-	logger      *slog.Logger
-	runner      iperf.Runner
+	target         string
+	port           int
+	period         time.Duration
+	timeout        time.Duration
+	mutex          sync.RWMutex
+	reverse        bool
+	bidirectional  bool // Enhanced feature by ThanhDeptr
+	udpMode        bool
+	bitrate        string
+	bindAddress    string
+	parallel       int
+	logger         *slog.Logger
+	runner         iperf.Runner
 
 	// Metrics
 	up              *prometheus.Desc
@@ -100,20 +102,21 @@ func NewCollector(config ProbeConfig, logger *slog.Logger) *Collector {
 // NewCollectorWithRunner creates a new Collector for iperf3 metrics with a custom runner.
 func NewCollectorWithRunner(config ProbeConfig, logger *slog.Logger, runner iperf.Runner) *Collector {
 	// Common labels for all metrics
-	labels := []string{"target", "port"}
+	labels := []string{"target", "port", "direction"}
 
 	return &Collector{
-		target:      config.Target,
-		port:        config.Port,
-		period:      config.Period,
-		timeout:     config.Timeout,
-		reverse:     config.ReverseMode,
-		udpMode:     config.UDPMode,
-		bitrate:     config.Bitrate,
-		bindAddress: config.BindAddress,
-		parallel:    config.Parallel,
-		logger:      logger,
-		runner:      runner,
+		target:         config.Target,
+		port:           config.Port,
+		period:         config.Period,
+		timeout:        config.Timeout,
+		reverse:        config.ReverseMode,
+		bidirectional:  config.Bidirectional,
+		udpMode:        config.UDPMode,
+		bitrate:        config.Bitrate,
+		bindAddress:    config.BindAddress,
+		parallel:       config.Parallel,
+		logger:         logger,
+		runner:         runner,
 
 		// Define metrics with labels
 		up: prometheus.NewDesc(
@@ -222,7 +225,54 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
 
-	// Run iperf3 test
+	// Common label values for all metrics
+	labelValues := []string{c.target, strconv.Itoa(c.port)}
+
+	// Check if bidirectional mode is enabled (enhanced feature by ThanhDeptr)
+	if c.bidirectional {
+		// Run both upload and download tests
+		c.logger.Debug("Running bidirectional test", "target", c.target, "port", c.port)
+		
+		// Run upload test (no -R flag)
+		uploadResult := c.runner.Run(ctx, iperf.Config{
+			Target:      c.target,
+			Port:        c.port,
+			Period:      c.period,
+			Timeout:     c.timeout,
+			ReverseMode: false, // Upload test
+			UDPMode:     c.udpMode,
+			Bitrate:     c.bitrate,
+			BindAddress: c.bindAddress,
+			Parallel:    c.parallel,
+			Logger:      c.logger,
+		})
+
+		// Run download test (with -R flag)
+		downloadResult := c.runner.Run(ctx, iperf.Config{
+			Target:      c.target,
+			Port:        c.port,
+			Period:      c.period,
+			Timeout:     c.timeout,
+			ReverseMode: true, // Download test
+			UDPMode:     c.udpMode,
+			Bitrate:     c.bitrate,
+			BindAddress: c.bindAddress,
+			Parallel:    c.parallel,
+			Logger:      c.logger,
+		})
+
+		// Process upload results
+		uploadLabels := append(labelValues, "upload")
+		c.processResult(ch, uploadResult, uploadLabels)
+
+		// Process download results
+		downloadLabels := append(labelValues, "download")
+		c.processResult(ch, downloadResult, downloadLabels)
+
+		return
+	}
+
+	// Original single-direction test
 	result := c.runner.Run(ctx, iperf.Config{
 		Target:      c.target,
 		Port:        c.port,
@@ -236,9 +286,17 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 		Logger:      c.logger,
 	})
 
-	// Common label values for all metrics
-	labelValues := []string{c.target, strconv.Itoa(c.port)}
+	// Process single-direction result
+	direction := "upload"
+	if c.reverse {
+		direction = "download"
+	}
+	singleLabels := append(labelValues, direction)
+	c.processResult(ch, result, singleLabels)
+}
 
+// processResult is a helper function to process iperf3 test results and emit metrics
+func (c *Collector) processResult(ch chan<- prometheus.Metric, result iperf.Result, labelValues []string) {
 	// Set metrics based on result
 	if result.Success {
 		ch <- prometheus.MustNewConstMetric(c.up, prometheus.GaugeValue, 1, labelValues...)

@@ -130,6 +130,7 @@ func (s *Server) probeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var reverseMode bool
+	var bidirectionalMode bool
 
 	reverseParam := r.URL.Query().Get("reverse_mode")
 	if reverseParam != "" {
@@ -138,6 +139,20 @@ func (s *Server) probeHandler(w http.ResponseWriter, r *http.Request) {
 		reverseMode, err = strconv.ParseBool(reverseParam)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("'reverse_mode' parameter must be true or false (boolean): %s", err), http.StatusBadRequest)
+			collector.IperfErrors.Inc()
+
+			return
+		}
+	}
+
+	// Check for bidirectional mode (enhanced feature by ThanhDeptr)
+	bidirectionalParam := r.URL.Query().Get("bidirectional")
+	if bidirectionalParam != "" {
+		var err error
+
+		bidirectionalMode, err = strconv.ParseBool(bidirectionalParam)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("'bidirectional' parameter must be true or false (boolean): %s", err), http.StatusBadRequest)
 			collector.IperfErrors.Inc()
 
 			return
@@ -227,13 +242,14 @@ func (s *Server) probeHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Create collector with probe configuration
 	probeConfig := collector.ProbeConfig{
-		Target:      target,
-		Port:        targetPort,
-		Period:      runPeriod,
-		Timeout:     runTimeout,
-		ReverseMode: reverseMode,
-		UDPMode:     udpMode,
-		Bitrate:     bitrate,
+		Target:         target,
+		Port:           targetPort,
+		Period:         runPeriod,
+		Timeout:        runTimeout,
+		ReverseMode:    reverseMode,
+		Bidirectional:  bidirectionalMode,
+		UDPMode:        udpMode,
+		Bitrate:        bitrate,
 	}
 
 	c := collector.NewCollector(probeConfig, s.logger)
