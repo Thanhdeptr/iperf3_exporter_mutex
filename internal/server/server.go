@@ -79,10 +79,11 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/debug/pprof/heap", http.DefaultServeMux.ServeHTTP)
 
 	// Create HTTP server
+	// Increased timeouts to accommodate bidirectional tests (2 * 30s + overhead)
 	s.server = &http.Server{
 		Handler:      handler,
-		ReadTimeout:  60 * time.Second,
-		WriteTimeout: 60 * time.Second,
+		ReadTimeout:  120 * time.Second,
+		WriteTimeout: 120 * time.Second,
 	}
 
 	// Start server using exporter-toolkit
@@ -240,6 +241,39 @@ func (s *Server) probeHandler(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	registry := prometheus.NewRegistry()
 
+	// Parse bind_address parameter (enhanced feature by ThanhDeptr)
+	bindAddress := r.URL.Query().Get("bind_address")
+
+	// Parse parallel parameter (enhanced feature by ThanhDeptr)
+	var parallel int
+	parallelParam := r.URL.Query().Get("parallel")
+	if parallelParam != "" {
+		var err error
+		parallel, err = strconv.Atoi(parallelParam)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("'parallel' parameter must be an integer: %s", err), http.StatusBadRequest)
+			collector.IperfErrors.Inc()
+
+			return
+		}
+		if parallel < 1 {
+			http.Error(w, "'parallel' parameter must be at least 1", http.StatusBadRequest)
+			collector.IperfErrors.Inc()
+
+			return
+		}
+	}
+
+	// Debug logging to verify parameters are parsed correctly
+	s.logger.Info("Probe parameters parsed",
+		"target", target,
+		"port", targetPort,
+		"bind_address", bindAddress,
+		"parallel", parallel,
+		"bidirectional", bidirectionalMode,
+		"period", runPeriod,
+	)
+
 	// Create collector with probe configuration
 	probeConfig := collector.ProbeConfig{
 		Target:         target,
@@ -250,6 +284,8 @@ func (s *Server) probeHandler(w http.ResponseWriter, r *http.Request) {
 		Bidirectional:  bidirectionalMode,
 		UDPMode:        udpMode,
 		Bitrate:        bitrate,
+		BindAddress:    bindAddress,
+		Parallel:       parallel,
 	}
 
 	c := collector.NewCollector(probeConfig, s.logger)

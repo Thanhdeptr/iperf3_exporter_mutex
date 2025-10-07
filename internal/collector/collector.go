@@ -299,7 +299,8 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 		})
 
 		// Small delay between tests to avoid resource conflicts
-		time.Sleep(1 * time.Second)
+		// Reduced from 1s to 500ms for better performance
+		time.Sleep(500 * time.Millisecond)
 
 		// Create separate context for download test
 		downloadCtx, downloadCancel := context.WithTimeout(context.Background(), c.timeout)
