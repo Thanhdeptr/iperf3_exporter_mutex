@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  iperf3_exporter:
+    build: .
+    container_name: iperf3_exporter
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=debug
+    command:
+      - --log.level=debug
+      - --iperf3.timeout=200s
+      - --web.listen-address=:9579
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:9579/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    labels:
+      - "prometheus.io/scrape=true"
+      - "prometheus.io/port=9579"
+      - "prometheus.io/path=/metrics"
+

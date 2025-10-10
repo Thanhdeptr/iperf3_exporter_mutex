@@ -50,6 +50,9 @@ func New(cfg *config.Config) *Server {
 
 // Start starts the HTTP server.
 func (s *Server) Start() error {
+	// Initialize global test lock
+	InitGlobalTestLock(s.logger)
+	
 	// Register version and process collectors
 	prometheus.MustRegister(versioncollector.NewCollector("iperf3_exporter"))
 	prometheus.MustRegister(collectors.NewBuildInfoCollector())
@@ -69,6 +72,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/", s.indexHandler)
 	mux.HandleFunc("/health", s.healthHandler)
 	mux.HandleFunc("/ready", s.readyHandler)
+	mux.HandleFunc("/lock-status", s.lockStatusHandler)
 
 	// Register pprof handlers
 	mux.HandleFunc("/debug/pprof/", http.DefaultServeMux.ServeHTTP)
@@ -274,6 +278,26 @@ func (s *Server) probeHandler(w http.ResponseWriter, r *http.Request) {
 		"period", runPeriod,
 	)
 
+	// Try to acquire global test lock with 80s timeout
+	requesterID := fmt.Sprintf("%s:%d", target, targetPort)
+	testLock := GetGlobalTestLock()
+	
+	lockCtx, lockCancel := context.WithTimeout(r.Context(), 80*time.Second)
+	defer lockCancel()
+	
+	if !testLock.TryLock(lockCtx, requesterID) {
+		s.logger.Error("Failed to acquire test lock within 80s timeout", "requester", requesterID)
+		http.Error(w, "iPerf3 test lock timeout: server is busy and wait queue is full", http.StatusServiceUnavailable)
+		collector.IperfErrors.Inc()
+		return
+	}
+	
+	// Ensure lock is released when handler exits
+	defer func() {
+		testLock.Unlock(requesterID)
+		s.logger.Debug("Released test lock", "requester", requesterID)
+	}()
+
 	// Create collector with probe configuration
 	probeConfig := collector.ProbeConfig{
 		Target:         target,
@@ -297,6 +321,29 @@ func (s *Server) probeHandler(w http.ResponseWriter, r *http.Request) {
 
 	duration := time.Since(start).Seconds()
 	collector.IperfDuration.Observe(duration)
+}
+
+// lockStatusHandler handles requests to the /lock-status endpoint
+func (s *Server) lockStatusHandler(w http.ResponseWriter, r *http.Request) {
+	testLock := GetGlobalTestLock()
+	status := testLock.GetStatus()
+	
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	
+	// Simple JSON response
+	response := fmt.Sprintf(`{
+		"is_locked": %t,
+		"locked_by": "%s",
+		"locked_at": "%s",
+		"lock_duration": "%s"
+	}`,
+		status["is_locked"],
+		status["locked_by"],
+		status["locked_at"],
+		status["lock_duration"])
+	
+	w.Write([]byte(response))
 }
 
 // indexHandler handles requests to the / endpoint using the exporter-toolkit landing page.
