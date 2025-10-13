@@ -29,6 +29,7 @@ type TestLock struct {
 	lockedBy string // identifier for who holds the lock
 	lockedAt time.Time
 	logger   *slog.Logger
+	waitCount int // number of requesters waiting for the lock
 }
 
 // NewTestLock creates a new TestLock instance.
@@ -70,10 +71,24 @@ func (tl *TestLock) TryLock(ctx context.Context, requesterID string) bool {
 		}
 	}()
 
+	// Increment wait count if lock is held
+	if tl.isLocked {
+		tl.waitCount++
+		tl.logger.Info("Added to wait queue", "requester", requesterID, "queue_size", tl.waitCount)
+	}
+
 	// Wait while the lock is held AND the context is still valid.
 	// This is the core of the safe waiting pattern.
 	for tl.isLocked && ctx.Err() == nil {
 		tl.cond.Wait()
+	}
+
+	// Decrement wait count when we get the lock or timeout
+	if tl.waitCount > 0 {
+		tl.waitCount--
+		if ctx.Err() != nil {
+			tl.logger.Info("Removed from wait queue due to timeout", "requester", requesterID, "queue_size", tl.waitCount)
+		}
 	}
 
 	// After waking up, check if it was due to cancellation.
@@ -120,6 +135,7 @@ func (tl *TestLock) GetStatus() map[string]interface{} {
 
 	status := map[string]interface{}{
 		"is_locked": tl.isLocked,
+		"queue_size": tl.waitCount,
 	}
 
 	if tl.isLocked {

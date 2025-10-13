@@ -331,17 +331,19 @@ func (s *Server) lockStatusHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	
-	// Simple JSON response
+	// Enhanced JSON response with queue information
 	response := fmt.Sprintf(`{
 		"is_locked": %t,
 		"locked_by": "%v",
 		"locked_at": "%v",
-		"lock_duration": "%v"
+		"lock_duration": "%v",
+		"queue_size": %v
 	}`,
 		status["is_locked"],
 		status["locked_by"],
 		status["locked_at"],
-		status["lock_duration"])
+		status["lock_duration"],
+		status["queue_size"])
 	
 	if _, err := w.Write([]byte(response)); err != nil {
 		s.logger.Error("Failed to write lock status response", "error", err)
