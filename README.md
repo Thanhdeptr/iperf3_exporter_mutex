@@ -9,7 +9,7 @@ A Prometheus exporter for iPerf3 network performance metrics with advanced mutex
 ---
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/edgard/iperf3_exporter)](https://goreportcard.com/report/github.com/edgard/iperf3_exporter)
-[![Docker Pulls](https://img.shields.io/docker/pulls/ghcr.io/edgard/iperf3_exporter.svg)](https://github.com/users/edgard/packages/container/package/iperf3_exporter)
+[![Docker Pulls](https://img.shields.io/docker/pulls/hatanthanh/iperf3_exporter.svg)](https://hub.docker.com/r/hatanthanh/iperf3_exporter)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/edgard/iperf3_exporter/blob/master/LICENSE)
 
 ## New Features (by ThanhDeptr)
@@ -31,12 +31,6 @@ The enhanced exporter includes a global mutex system that prevents concurrent iP
 - **Timeout Protection**: Requests timeout after 80 seconds to prevent deadlocks
 - **Lock Status Endpoint**: Monitor lock status via `/lock-status` endpoint
 
----
-
-## IMPORTANT: Docker Image Name Change
-
-**The Docker image has moved to GitHub Container Registry (ghcr.io) and the name has changed from `iperf3-exporter` to `iperf3_exporter` following GitHub's naming standards. If you were using the old image name, please update your references.**
-
 The iPerf3 exporter allows iPerf3 probing of endpoints for Prometheus monitoring, enabling you to measure network performance metrics like bandwidth, jitter, and packet loss.
 
 ## Features
@@ -50,32 +44,9 @@ The iPerf3 exporter allows iPerf3 probing of endpoints for Prometheus monitoring
 - Health and readiness endpoints for monitoring
 - Prometheus metrics for exporter itself
 
-## Installation
+## Installation & Usage
 
-### From Binaries
-
-Download the most suitable binary for your platform from [the releases tab](https://github.com/edgard/iperf3_exporter/releases).
-
-```bash
-# Download (replace VERSION and PLATFORM with appropriate values)
-curl -L -o iperf3_exporter https://github.com/edgard/iperf3_exporter/releases/download/VERSION/iperf3_exporter-VERSION.PLATFORM
-
-# Make executable
-chmod +x iperf3_exporter
-
-# Run
-./iperf3_exporter <flags>
-```
-
-### From Source
-
-```bash
-git clone https://github.com/edgard/iperf3_exporter.git
-cd iperf3_exporter
-make build
-```
-
-### Using Docker
+### Using Docker (Recommended)
 
 ```bash
 docker run -d \
@@ -83,25 +54,25 @@ docker run -d \
   -p 9579:9579 \
   --cap-add=NET_ADMIN \
   --cap-add=NET_RAW \
-  ghcr.io/edgard/iperf3_exporter:latest
+  hatanthanh/iperf3_exporter:latest
 ```
 
-## Usage
-
-### Basic Usage
+### From Binaries
 
 ```bash
+# Download from releases
+curl -L -o iperf3_exporter https://github.com/edgard/iperf3_exporter/releases/download/VERSION/iperf3_exporter-VERSION.PLATFORM
+chmod +x iperf3_exporter
 ./iperf3_exporter --help
 ```
 
 ### Configuration
 
-The exporter can be configured using command-line flags or environment variables:
+The exporter can be configured using command-line flags:
 
 - `--web.listen-address`: Address to listen on (default: `:9579`)
 - `--web.telemetry-path`: Path under which to expose metrics (default: `/metrics`)
 - `--log.level`: Log level (default: `info`)
-- `--log.format`: Log format (default: `logfmt`)
 
 ### Prometheus Configuration
 
@@ -155,26 +126,6 @@ The exporter exposes the following metrics:
 - `iperf3_latency_download_ms`: Download latency in milliseconds
 - `iperf3_packet_loss_upload_percent`: Upload packet loss percentage
 - `iperf3_packet_loss_download_percent`: Download packet loss percentage
-
-## Development
-
-### Building
-
-```bash
-make build
-```
-
-### Testing
-
-```bash
-make test
-```
-
-### Docker Build
-
-```bash
-docker build -t iperf3_exporter .
-```
 
 ## Contributing
 
