@@ -343,7 +343,9 @@ func (s *Server) lockStatusHandler(w http.ResponseWriter, r *http.Request) {
 		status["locked_at"],
 		status["lock_duration"])
 	
-	w.Write([]byte(response))
+	if _, err := w.Write([]byte(response)); err != nil {
+		s.logger.Error("Failed to write lock status response", "error", err)
+	}
 }
 
 // indexHandler handles requests to the / endpoint using the exporter-toolkit landing page.
