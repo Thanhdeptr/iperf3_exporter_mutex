@@ -278,15 +278,15 @@ func (s *Server) probeHandler(w http.ResponseWriter, r *http.Request) {
 		"period", runPeriod,
 	)
 
-	// Try to acquire global test lock with 230s timeout
+	// Try to acquire global test lock with 330s timeout
 	requesterID := fmt.Sprintf("%s:%d", target, targetPort)
 	testLock := GetGlobalTestLock()
 	
-	lockCtx, lockCancel := context.WithTimeout(r.Context(), 230*time.Second)
+	lockCtx, lockCancel := context.WithTimeout(r.Context(), 330*time.Second)
 	defer lockCancel()
 	
 	if !testLock.TryLock(lockCtx, requesterID) {
-		s.logger.Error("Failed to acquire test lock within 230s timeout", "requester", requesterID)
+		s.logger.Error("Failed to acquire test lock within 330s timeout", "requester", requesterID)
 		http.Error(w, "iPerf3 test lock timeout: server is busy and wait queue is full", http.StatusServiceUnavailable)
 		collector.IperfErrors.Inc()
 		return
