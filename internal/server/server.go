@@ -332,6 +332,17 @@ func (s *Server) lockStatusHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	
 	// Simple JSON response
+	var lockedBy, lockedAt, lockDuration string
+	if status["locked_by"] != nil {
+		lockedBy = status["locked_by"].(string)
+	}
+	if status["locked_at"] != nil {
+		lockedAt = status["locked_at"].(time.Time).Format(time.RFC3339)
+	}
+	if status["lock_duration"] != nil {
+		lockDuration = status["lock_duration"].(string)
+	}
+	
 	response := fmt.Sprintf(`{
 		"is_locked": %t,
 		"locked_by": "%s",
@@ -339,9 +350,9 @@ func (s *Server) lockStatusHandler(w http.ResponseWriter, r *http.Request) {
 		"lock_duration": "%s"
 	}`,
 		status["is_locked"],
-		status["locked_by"],
-		status["locked_at"],
-		status["lock_duration"])
+		lockedBy,
+		lockedAt,
+		lockDuration)
 	
 	w.Write([]byte(response))
 }
