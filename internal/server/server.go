@@ -15,6 +15,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log/slog"
@@ -29,6 +30,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	versioncollector "github.com/prometheus/client_golang/prometheus/collectors/version"
+	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/exporter-toolkit/web"
 )
@@ -295,7 +297,7 @@ func (s *Server) probeHandler(w http.ResponseWriter, r *http.Request) {
 	// Ensure lock is released when handler exits
 	defer func() {
 		testLock.Unlock(requesterID)
-		s.logger.Debug("Released test lock", "requester", requesterID)
+		s.logger.Info("Released test lock", "requester", requesterID)
 	}()
 
 	// Create collector with probe configuration
@@ -310,14 +312,42 @@ func (s *Server) probeHandler(w http.ResponseWriter, r *http.Request) {
 		Bitrate:        bitrate,
 		BindAddress:    bindAddress,
 		Parallel:       parallel,
+		Context:        r.Context(), // Request context for proper cancellation
 	}
 
 	c := collector.NewCollector(probeConfig, s.logger)
 	registry.MustRegister(c)
 
-	// Delegate http serving to Prometheus client library, which will call collector.Collect.
-	h := promhttp.HandlerFor(registry, promhttp.HandlerOpts{})
-	h.ServeHTTP(w, r)
+	// 1. CHỦ ĐỘNG thu thập metrics.
+	//    Hàm Gather sẽ gọi c.Collect(), vốn sẽ chạy iperf3 với context ở trên.
+	//    Nếu client ngắt kết nối, iperf3 bị kill, Gather sẽ trả về lỗi ngay lập tức.
+	metricFamilies, err := registry.Gather()
+	if err != nil {
+		s.logger.Error("Failed to gather metrics", "error", err, "requester", requesterID)
+		http.Error(w, fmt.Sprintf("Failed to gather metrics: %v", err), http.StatusInternalServerError)
+		collector.IperfErrors.Inc()
+		return // Thoát ra một cách an toàn, lock sẽ được nhả
+	}
+
+	// 2. Encode tất cả metrics vào một buffer trong bộ nhớ.
+	//    Thao tác này rất nhanh và không phụ thuộc vào mạng.
+	var buf bytes.Buffer
+	encoder := expfmt.NewEncoder(&buf, expfmt.FmtText)
+	for _, mf := range metricFamilies {
+		if err := encoder.Encode(mf); err != nil {
+			s.logger.Error("Failed to encode metric family", "error", err, "requester", requesterID)
+			http.Error(w, fmt.Sprintf("Failed to encode metrics: %v", err), http.StatusInternalServerError)
+			collector.IperfErrors.Inc()
+			return // Thoát ra an toàn
+		}
+	}
+
+	// 3. Ghi toàn bộ buffer ra ResponseWriter trong một lần duy nhất.
+	w.Header().Set("Content-Type", string(expfmt.FmtText))
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(buf.Bytes()); err != nil {
+		s.logger.Warn("Error writing response body", "error", err, "requester", requesterID)
+	}
 
 	duration := time.Since(start).Seconds()
 	collector.IperfDuration.Observe(duration)

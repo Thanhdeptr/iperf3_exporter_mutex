@@ -57,6 +57,7 @@ type ProbeConfig struct {
 	Bitrate        string
 	BindAddress    string // Source IP address to bind to (-B parameter)
 	Parallel       int    // Number of parallel streams (-P parameter)
+	Context        context.Context // Request context for proper cancellation
 }
 
 // Collector implements the prometheus.Collector interface for iperf3 metrics.
@@ -72,6 +73,7 @@ type Collector struct {
 	bitrate        string
 	bindAddress    string
 	parallel       int
+	context        context.Context // Request context for proper cancellation
 	logger         *slog.Logger
 	runner         iperf.Runner
 
@@ -122,6 +124,7 @@ func NewCollectorWithRunner(config ProbeConfig, logger *slog.Logger, runner iper
 		bitrate:        config.Bitrate,
 		bindAddress:    config.BindAddress,
 		parallel:       config.Parallel,
+		context:        config.Context,
 		logger:         logger,
 		runner:         runner,
 
@@ -267,8 +270,14 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	c.mutex.Lock() // To protect metrics from concurrent collects.
 	defer c.mutex.Unlock()
 
-	// Create context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	// Use request context if available, otherwise create one with timeout
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if c.context != nil {
+		ctx, cancel = context.WithTimeout(c.context, c.timeout)
+	} else {
+		ctx, cancel = context.WithTimeout(context.Background(), c.timeout)
+	}
 	defer cancel()
 
 	// Common label values for all metrics
@@ -280,7 +289,7 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 		c.logger.Debug("Running bidirectional test sequentially", "target", c.target, "port", c.port)
 		
 		// Create separate context for each test to avoid timeout issues
-		uploadCtx, uploadCancel := context.WithTimeout(context.Background(), c.timeout)
+		uploadCtx, uploadCancel := context.WithTimeout(c.context, c.timeout)
 		defer uploadCancel()
 		
 		// Run upload test (no -R flag)
@@ -303,7 +312,7 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 		time.Sleep(500 * time.Millisecond)
 
 		// Create separate context for download test
-		downloadCtx, downloadCancel := context.WithTimeout(context.Background(), c.timeout)
+		downloadCtx, downloadCancel := context.WithTimeout(c.context, c.timeout)
 		defer downloadCancel()
 
 		// Run download test (with -R flag)
