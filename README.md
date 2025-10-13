@@ -28,7 +28,7 @@ The enhanced exporter includes a global mutex system that prevents concurrent iP
 
 - **Global Lock**: Only one iPerf3 test runs at a time across all requests
 - **Queue Management**: Subsequent requests wait for the current test to complete
-- **Timeout Protection**: Requests timeout after 80 seconds to prevent deadlocks
+- **Timeout Protection**: Requests timeout after 120 seconds to prevent deadlocks
 - **Lock Status Endpoint**: Monitor lock status via `/lock-status` endpoint
 
 The iPerf3 exporter allows iPerf3 probing of endpoints for Prometheus monitoring, enabling you to measure network performance metrics like bandwidth, jitter, and packet loss.
