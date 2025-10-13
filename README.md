@@ -1,6 +1,6 @@
 # iPerf3 Exporter v2 (Enhanced by ThanhDeptr)
 
-A Prometheus exporter for iPerf3 network performance metrics with enhanced features.
+A Prometheus exporter for iPerf3 network performance metrics with advanced mutex mechanism to prevent concurrent test conflicts.
 
 > **📌 This is a fork of [edgard/iperf3_exporter](https://github.com/edgard/iperf3_exporter) with additional enhancements by ThanhDeptr**
 
@@ -8,11 +8,22 @@ A Prometheus exporter for iPerf3 network performance metrics with enhanced featu
 [![Docker Pulls](https://img.shields.io/docker/pulls/ghcr.io/edgard/iperf3_exporter.svg)](https://github.com/users/edgard/packages/container/package/iperf3_exporter)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/edgard/iperf3_exporter/blob/master/LICENSE)
 
-## 🚀 Enhanced Features (by ThanhDeptr)
+## 🚀 New Features (by ThanhDeptr)
 
-- **Bind Address Support**: Configure specific network interfaces for iPerf3 tests
-- **Parallel Streams**: Improved performance with parallel stream functionality
-- **Enhanced Resource Management**: Better collector logic for optimal performance
+- **🔒 Mutex Mechanism**: Prevents concurrent iPerf3 tests with global locking system
+- **🔄 Bidirectional Testing**: Simultaneous upload/download bandwidth measurement
+- **🌐 Bind Address Support**: Configure specific network interfaces for multi-WAN testing
+- **⚡ Parallel Streams**: Enhanced performance with configurable parallel connections
+- **📊 Advanced Metrics**: Calculated bandwidth, latency, and packet loss metrics
+
+## 🔒 Mutex Mechanism
+
+The enhanced exporter includes a global mutex system that prevents concurrent iPerf3 tests from conflicting with each other. This is especially useful when monitoring multiple WAN connections simultaneously:
+
+- **Global Lock**: Only one iPerf3 test runs at a time across all requests
+- **Queue Management**: Subsequent requests wait for the current test to complete
+- **Timeout Protection**: Requests timeout after 80 seconds to prevent deadlocks
+- **Lock Status Endpoint**: Monitor lock status via `/lock-status` endpoint
 
 ## ⚠️ IMPORTANT: Docker Image Name Change
 
@@ -322,5 +333,6 @@ This project is released under Apache License 2.0, see [LICENSE](https://github.
 
 **Original Repository**: [edgard/iperf3_exporter](https://github.com/edgard/iperf3_exporter)  
 **Enhanced Fork v2**: [Thanhdeptr/iperf3_exporter.v2](https://github.com/Thanhdeptr/iperf3_exporter.v2)
-#   T e s t   c o m m i t   f o r   G i t H u b   c o n t r i b u t i o n s  
+#   T e s t   c o m m i t   f o r   G i t H u b   c o n t r i b u t i o n s 
+ 
  
