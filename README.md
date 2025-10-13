@@ -2,7 +2,11 @@
 
 A Prometheus exporter for iPerf3 network performance metrics with advanced mutex mechanism to prevent concurrent test conflicts.
 
+---
+
 > **📌 This is a fork of [edgard/iperf3_exporter](https://github.com/edgard/iperf3_exporter) with additional enhancements by ThanhDeptr**
+
+---
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/edgard/iperf3_exporter)](https://goreportcard.com/report/github.com/edgard/iperf3_exporter)
 [![Docker Pulls](https://img.shields.io/docker/pulls/ghcr.io/edgard/iperf3_exporter.svg)](https://github.com/users/edgard/packages/container/package/iperf3_exporter)
@@ -16,6 +20,8 @@ A Prometheus exporter for iPerf3 network performance metrics with advanced mutex
 - **⚡ Parallel Streams**: Enhanced performance with configurable parallel connections
 - **📊 Advanced Metrics**: Calculated bandwidth, latency, and packet loss metrics
 
+---
+
 ## 🔒 Mutex Mechanism
 
 The enhanced exporter includes a global mutex system that prevents concurrent iPerf3 tests from conflicting with each other. This is especially useful when monitoring multiple WAN connections simultaneously:
@@ -24,6 +30,8 @@ The enhanced exporter includes a global mutex system that prevents concurrent iP
 - **Queue Management**: Subsequent requests wait for the current test to complete
 - **Timeout Protection**: Requests timeout after 80 seconds to prevent deadlocks
 - **Lock Status Endpoint**: Monitor lock status via `/lock-status` endpoint
+
+---
 
 ## ⚠️ IMPORTANT: Docker Image Name Change
 
