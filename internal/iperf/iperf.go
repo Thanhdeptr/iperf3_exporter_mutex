@@ -238,6 +238,8 @@ func (r *DefaultRunner) Run(ctx context.Context, cfg Config) Result {
 		"bitrate", cfg.Bitrate,
 		"bind_address", cfg.BindAddress,
 		"parallel", cfg.Parallel,
+		"command", GetIperfCmd(),
+		"args", iperfArgs,
 	)
 
 	out, err := cmd.Output()
@@ -247,12 +249,16 @@ func (r *DefaultRunner) Run(ctx context.Context, cfg Config) Result {
 			cfg.Logger.Error("Failed to run iperf3",
 				"err", err,
 				"stderr", stderrOutput,
+				"command", GetIperfCmd(),
+				"args", iperfArgs,
 			)
 
 			result.Error = fmt.Errorf("iperf3 execution failed: %w: %s", err, stderrOutput)
 		} else {
 			cfg.Logger.Error("Failed to run iperf3",
 				"err", err,
+				"command", GetIperfCmd(),
+				"args", iperfArgs,
 			)
 
 			result.Error = fmt.Errorf("iperf3 execution failed: %w", err)
