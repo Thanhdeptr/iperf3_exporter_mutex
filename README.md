@@ -4,7 +4,7 @@ A Prometheus exporter for iPerf3 network performance metrics with advanced mutex
 
 ---
 
-> **📌 This is a fork of [edgard/iperf3_exporter](https://github.com/edgard/iperf3_exporter) with additional enhancements by ThanhDeptr**
+> **This is a fork of [edgard/iperf3_exporter](https://github.com/edgard/iperf3_exporter) with additional enhancements by ThanhDeptr**
 
 ---
 
@@ -12,17 +12,17 @@ A Prometheus exporter for iPerf3 network performance metrics with advanced mutex
 [![Docker Pulls](https://img.shields.io/docker/pulls/ghcr.io/edgard/iperf3_exporter.svg)](https://github.com/users/edgard/packages/container/package/iperf3_exporter)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://github.com/edgard/iperf3_exporter/blob/master/LICENSE)
 
-## 🚀 New Features (by ThanhDeptr)
+## New Features (by ThanhDeptr)
 
-- **🔒 Mutex Mechanism**: Prevents concurrent iPerf3 tests with global locking system
-- **🔄 Bidirectional Testing**: Simultaneous upload/download bandwidth measurement
-- **🌐 Bind Address Support**: Configure specific network interfaces for multi-WAN testing
-- **⚡ Parallel Streams**: Enhanced performance with configurable parallel connections
-- **📊 Advanced Metrics**: Calculated bandwidth, latency, and packet loss metrics
+- **Mutex Mechanism**: Prevents concurrent iPerf3 tests with global locking system
+- **Bidirectional Testing**: Simultaneous upload/download bandwidth measurement
+- **Bind Address Support**: Configure specific network interfaces for multi-WAN testing
+- **Parallel Streams**: Enhanced performance with configurable parallel connections
+- **Advanced Metrics**: Calculated bandwidth, latency, and packet loss metrics
 
 ---
 
-## 🔒 Mutex Mechanism
+## Mutex Mechanism
 
 The enhanced exporter includes a global mutex system that prevents concurrent iPerf3 tests from conflicting with each other. This is especially useful when monitoring multiple WAN connections simultaneously:
 
@@ -33,7 +33,7 @@ The enhanced exporter includes a global mutex system that prevents concurrent iP
 
 ---
 
-## ⚠️ IMPORTANT: Docker Image Name Change
+## IMPORTANT: Docker Image Name Change
 
 **The Docker image has moved to GitHub Container Registry (ghcr.io) and the name has changed from `iperf3-exporter` to `iperf3_exporter` following GitHub's naming standards. If you were using the old image name, please update your references.**
 
