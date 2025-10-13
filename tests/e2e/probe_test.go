@@ -159,12 +159,12 @@ func TestProbeEndpoint(t *testing.T) {
 
 		// Verify metrics contain expected values using regex patterns
 		expectedPatterns := []*regexp.Regexp{
-			regexp.MustCompile(`iperf3_up\{port="5201".*target="test.example.com"\} 1`),
-			regexp.MustCompile(`iperf3_sent_seconds\{port="5201".*target="test.example.com"\} 5`),
-			regexp.MustCompile(`iperf3_sent_bytes\{port="5201".*target="test.example.com"\} 5\.24288e\+06`),
-			regexp.MustCompile(`iperf3_received_seconds\{port="5201".*target="test.example.com"\} 5`),
-			regexp.MustCompile(`iperf3_received_bytes\{port="5201".*target="test.example.com"\} 5\.24288e\+06`),
-			regexp.MustCompile(`iperf3_retransmits\{port="5201".*target="test.example.com"\} 0`),
+			regexp.MustCompile(`iperf3_up\{direction="upload",port="5201",target="test.example.com"\} 1`),
+			regexp.MustCompile(`iperf3_sent_seconds\{direction="upload",port="5201",target="test.example.com"\} 5`),
+			regexp.MustCompile(`iperf3_sent_bytes\{direction="upload",port="5201",target="test.example.com"\} 5\.24288e\+06`),
+			regexp.MustCompile(`iperf3_received_seconds\{direction="upload",port="5201",target="test.example.com"\} 5`),
+			regexp.MustCompile(`iperf3_received_bytes\{direction="upload",port="5201",target="test.example.com"\} 5\.24288e\+06`),
+			regexp.MustCompile(`iperf3_retransmits\{direction="upload",port="5201",target="test.example.com"\} 0`),
 		}
 
 		for _, pattern := range expectedPatterns {
@@ -221,7 +221,7 @@ func TestProbeEndpoint(t *testing.T) {
 		}
 
 		// Verify metrics contain expected port using regex
-		expectedPattern := regexp.MustCompile(`iperf3_up\{port="9999".*target="test.example.com"\} 1`)
+		expectedPattern := regexp.MustCompile(`iperf3_up\{direction="upload",port="9999",target="test.example.com"\} 1`)
 		if !expectedPattern.MatchString(string(body)) {
 			t.Errorf("Expected metric matching pattern %q not found in response", expectedPattern.String())
 		}
@@ -250,7 +250,7 @@ func TestProbeEndpoint(t *testing.T) {
 		// Verify the request was processed with reverse mode
 		// We can't directly verify the reverse mode parameter in the response,
 		// but we can check that the metrics are present and have the expected values
-		expectedPattern := regexp.MustCompile(`iperf3_up\{port="5201".*target="test.example.com"\} 1`)
+		expectedPattern := regexp.MustCompile(`iperf3_up\{direction="download",port="5201",target="test.example.com"\} 1`)
 		if !expectedPattern.MatchString(string(body)) {
 			t.Errorf("Expected metric matching pattern %q not found in response", expectedPattern.String())
 		}
@@ -279,7 +279,7 @@ func TestProbeEndpoint(t *testing.T) {
 		// Verify the request was processed with the bitrate parameter
 		// We can't directly verify the bitrate parameter in the response,
 		// but we can check that the metrics are present and have the expected values
-		expectedPattern := regexp.MustCompile(`iperf3_up\{port="5201".*target="test.example.com"\} 1`)
+		expectedPattern := regexp.MustCompile(`iperf3_up\{direction="upload",port="5201",target="test.example.com"\} 1`)
 		if !expectedPattern.MatchString(string(body)) {
 			t.Errorf("Expected metric matching pattern %q not found in response", expectedPattern.String())
 		}
@@ -308,7 +308,7 @@ func TestProbeEndpoint(t *testing.T) {
 		// Verify the request was processed with the period parameter
 		// We can't directly verify the period parameter in the response,
 		// but we can check that the metrics are present and have the expected values
-		expectedPattern := regexp.MustCompile(`iperf3_up\{port="5201".*target="test.example.com"\} 1`)
+		expectedPattern := regexp.MustCompile(`iperf3_up\{direction="upload",port="5201",target="test.example.com"\} 1`)
 		if !expectedPattern.MatchString(string(body)) {
 			t.Errorf("Expected metric matching pattern %q not found in response", expectedPattern.String())
 		}
@@ -366,7 +366,7 @@ func TestProbeEndpoint(t *testing.T) {
 		}
 
 		// Verify metrics indicate failure using regex
-		expectedPattern := regexp.MustCompile(`iperf3_up\{port="5201".*target="test.example.com"\} 0`)
+		expectedPattern := regexp.MustCompile(`iperf3_up\{direction="upload",port="5201",target="test.example.com"\} 0`)
 		if !expectedPattern.MatchString(string(body)) {
 			t.Errorf("Expected metric matching pattern %q not found in response", expectedPattern.String())
 		}
