@@ -308,8 +308,8 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 		})
 
 		// Small delay between tests to avoid resource conflicts
-		// Reduced from 1s to 500ms for better performance
-		time.Sleep(500 * time.Millisecond)
+		// Increased to 35s to allow iPerf3 server to fully reset
+		time.Sleep(35 * time.Second)
 
 		// Create separate context for download test
 		downloadCtx, downloadCancel := context.WithTimeout(c.context, c.timeout)
