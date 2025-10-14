@@ -332,7 +332,7 @@ func (s *Server) probeHandler(w http.ResponseWriter, r *http.Request) {
 	// 2. Encode tất cả metrics vào một buffer trong bộ nhớ.
 	//    Thao tác này rất nhanh và không phụ thuộc vào mạng.
 	var buf bytes.Buffer
-	encoder := expfmt.NewEncoder(&buf, expfmt.FmtText)
+	encoder := expfmt.NewEncoder(&buf, expfmt.NewFormat(expfmt.TypeTextPlain))
 	for _, mf := range metricFamilies {
 		if err := encoder.Encode(mf); err != nil {
 			s.logger.Error("Failed to encode metric family", "error", err, "requester", requesterID)
@@ -343,7 +343,7 @@ func (s *Server) probeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 3. Ghi toàn bộ buffer ra ResponseWriter trong một lần duy nhất.
-	w.Header().Set("Content-Type", string(expfmt.FmtText))
+	w.Header().Set("Content-Type", string(expfmt.NewFormat(expfmt.TypeTextPlain)))
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(buf.Bytes()); err != nil {
 		s.logger.Warn("Error writing response body", "error", err, "requester", requesterID)
