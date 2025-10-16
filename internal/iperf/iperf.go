@@ -259,17 +259,8 @@ func (r *DefaultRunner) Run(ctx context.Context, cfg Config) Result {
 			break
 		}
 
-		// Log mỗi lần thử
-		if attempt == 1 {
-			cfg.Logger.Info("Starting iPerf3 test", "attempt", attempt, "max_retries", maxRetries, "target", cfg.Target, "port", cfg.Port)
-		} else {
-			cfg.Logger.Info("Retrying iPerf3 test due to recoverable error",
-				"attempt", attempt,
-				"max_retries", maxRetries,
-				"target", cfg.Target,
-				"port", cfg.Port,
-				"retry_delay", retryDelay,
-				"previous_error", lastIperf3Output)
+		if attempt > 1 {
+			cfg.Logger.Info("Retrying iPerf3 test due to recoverable error...", "attempt", attempt, "max_retries", maxRetries)
 			time.Sleep(retryDelay) // Chỉ chờ nếu đây là lần thử lại
 		}
 
@@ -281,20 +272,11 @@ func (r *DefaultRunner) Run(ctx context.Context, cfg Config) Result {
 		}
 
 		lastCommandString = cmd.String() // Lưu lại để ghi log
-
-		// Log command đang chạy
-		cfg.Logger.Debug("Executing iPerf3 command", "attempt", attempt, "command", lastCommandString)
-
 		output, err = cmd.CombinedOutput()
 		lastIperf3Output = string(bytes.TrimSpace(output)) // Lưu lại output của lần chạy cuối
 
 		// **Nếu thành công, thoát khỏi vòng lặp ngay lập tức**
 		if err == nil {
-			if attempt > 1 {
-				cfg.Logger.Info("iPerf3 test succeeded after retry", "attempt", attempt, "total_attempts", attempt, "target", cfg.Target, "port", cfg.Port)
-			} else {
-				cfg.Logger.Info("iPerf3 test succeeded on first attempt", "target", cfg.Target, "port", cfg.Port)
-			}
 			break
 		}
 
@@ -303,34 +285,8 @@ func (r *DefaultRunner) Run(ctx context.Context, cfg Config) Result {
 			strings.Contains(lastIperf3Output, "the server is busy") ||
 			strings.Contains(lastIperf3Output, "Connection reset by peer")
 
-		// Log kết quả của lần thử hiện tại
-		if isRetryable {
-			cfg.Logger.Warn("iPerf3 test failed with recoverable error",
-				"attempt", attempt,
-				"target", cfg.Target,
-				"port", cfg.Port,
-				"error_type", "recoverable",
-				"iperf3_output", lastIperf3Output,
-				"will_retry", attempt < maxRetries)
-		} else {
-			cfg.Logger.Error("iPerf3 test failed with non-recoverable error",
-				"attempt", attempt,
-				"target", cfg.Target,
-				"port", cfg.Port,
-				"error_type", "non-recoverable",
-				"iperf3_output", lastIperf3Output,
-				"will_retry", false)
-		}
-
 		// Nếu lỗi không thể phục hồi, hoặc đã hết số lần thử, thoát vòng lặp
 		if !isRetryable || attempt == maxRetries {
-			if attempt == maxRetries && isRetryable {
-				cfg.Logger.Error("iPerf3 test failed after all retry attempts exhausted",
-					"total_attempts", maxRetries,
-					"target", cfg.Target,
-					"port", cfg.Port,
-					"final_error", lastIperf3Output)
-			}
 			break
 		}
 	}

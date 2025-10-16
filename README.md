@@ -15,6 +15,7 @@ A Prometheus exporter for iPerf3 network performance metrics with advanced mutex
 ## New Features (by ThanhDeptr)
 
 - **Mutex Mechanism**: Prevents concurrent iPerf3 tests with global locking system
+- **Retry Logic**: Automatic retry mechanism for recoverable network errors
 - **Bidirectional Testing**: Simultaneous upload/download bandwidth measurement
 - **Bind Address Support**: Configure specific network interfaces for multi-WAN testing
 - **Parallel Streams**: Enhanced performance with configurable parallel connections
@@ -28,8 +29,18 @@ The enhanced exporter includes a global mutex system that prevents concurrent iP
 
 - **Global Lock**: Only one iPerf3 test runs at a time across all requests
 - **Queue Management**: Subsequent requests wait for the current test to complete
-- **Timeout Protection**: Requests timeout after 120 seconds to prevent deadlocks
+- **Timeout Protection**: Requests timeout after 500 seconds to prevent deadlocks
 - **Lock Status Endpoint**: Monitor lock status via `/lock-status` endpoint
+
+## Retry Logic
+
+The exporter now includes intelligent retry mechanism to handle temporary network issues and improve test reliability:
+
+- **Automatic Retry**: Up to 3 retry attempts for recoverable errors
+- **Smart Error Detection**: Retries on "Connection refused", "server busy", and "Connection reset by peer"
+- **Configurable Delay**: 3-second delay between retry attempts
+- **Context Awareness**: Respects timeout and cancellation from Prometheus
+- **Enhanced Logging**: Detailed error reporting with iPerf3 output for debugging
 
 The iPerf3 exporter allows iPerf3 probing of endpoints for Prometheus monitoring, enabling you to measure network performance metrics like bandwidth, jitter, and packet loss.
 
