@@ -30,8 +30,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 	versioncollector "github.com/prometheus/client_golang/prometheus/collectors/version"
-	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/exporter-toolkit/web"
 )
 
@@ -54,7 +54,7 @@ func New(cfg *config.Config) *Server {
 func (s *Server) Start() error {
 	// Initialize global test lock
 	InitGlobalTestLock(s.logger)
-	
+
 	// Register version and process collectors
 	prometheus.MustRegister(versioncollector.NewCollector("iperf3_exporter"))
 	prometheus.MustRegister(collectors.NewBuildInfoCollector())
@@ -283,17 +283,17 @@ func (s *Server) probeHandler(w http.ResponseWriter, r *http.Request) {
 	// Try to acquire global test lock with 500s timeout
 	requesterID := fmt.Sprintf("%s:%d", target, targetPort)
 	testLock := GetGlobalTestLock()
-	
+
 	lockCtx, lockCancel := context.WithTimeout(r.Context(), 500*time.Second)
 	defer lockCancel()
-	
+
 	if !testLock.TryLock(lockCtx, requesterID) {
 		s.logger.Error("Failed to acquire test lock within 500s timeout", "requester", requesterID)
 		http.Error(w, "iPerf3 test lock timeout: server is busy and wait queue is full", http.StatusServiceUnavailable)
 		collector.IperfErrors.Inc()
 		return
 	}
-	
+
 	// Ensure lock is released when handler exits
 	defer func() {
 		testLock.Unlock(requesterID)
@@ -302,17 +302,17 @@ func (s *Server) probeHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Create collector with probe configuration
 	probeConfig := collector.ProbeConfig{
-		Target:         target,
-		Port:           targetPort,
-		Period:         runPeriod,
-		Timeout:        runTimeout,
-		ReverseMode:    reverseMode,
-		Bidirectional:  bidirectionalMode,
-		UDPMode:        udpMode,
-		Bitrate:        bitrate,
-		BindAddress:    bindAddress,
-		Parallel:       parallel,
-		Context:        r.Context(), // Request context for proper cancellation
+		Target:        target,
+		Port:          targetPort,
+		Period:        runPeriod,
+		Timeout:       runTimeout,
+		ReverseMode:   reverseMode,
+		Bidirectional: bidirectionalMode,
+		UDPMode:       udpMode,
+		Bitrate:       bitrate,
+		BindAddress:   bindAddress,
+		Parallel:      parallel,
+		Context:       r.Context(), // Request context for proper cancellation
 	}
 
 	c := collector.NewCollector(probeConfig, s.logger)
@@ -357,10 +357,10 @@ func (s *Server) probeHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) lockStatusHandler(w http.ResponseWriter, r *http.Request) {
 	testLock := GetGlobalTestLock()
 	status := testLock.GetStatus()
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	
+
 	// Enhanced JSON response with queue information
 	response := fmt.Sprintf(`{
 		"is_locked": %t,
@@ -374,7 +374,7 @@ func (s *Server) lockStatusHandler(w http.ResponseWriter, r *http.Request) {
 		status["locked_at"],
 		status["lock_duration"],
 		status["queue_size"])
-	
+
 	if _, err := w.Write([]byte(response)); err != nil {
 		s.logger.Error("Failed to write lock status response", "error", err)
 	}

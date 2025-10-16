@@ -23,12 +23,12 @@ import (
 
 // TestLock manages a global mutex for iPerf3 tests using sync.Cond for thread safety.
 type TestLock struct {
-	mu       sync.Mutex
-	cond     *sync.Cond
-	isLocked bool
-	lockedBy string // identifier for who holds the lock
-	lockedAt time.Time
-	logger   *slog.Logger
+	mu        sync.Mutex
+	cond      *sync.Cond
+	isLocked  bool
+	lockedBy  string // identifier for who holds the lock
+	lockedAt  time.Time
+	logger    *slog.Logger
 	waitCount int // number of requesters waiting for the lock
 }
 
@@ -134,7 +134,7 @@ func (tl *TestLock) GetStatus() map[string]interface{} {
 	defer tl.mu.Unlock()
 
 	status := map[string]interface{}{
-		"is_locked": tl.isLocked,
+		"is_locked":  tl.isLocked,
 		"queue_size": tl.waitCount,
 	}
 

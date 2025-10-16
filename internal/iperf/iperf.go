@@ -24,6 +24,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -226,7 +227,7 @@ func (r *DefaultRunner) Run(ctx context.Context, cfg Config) Result {
 		cmd = execCommand(GetIperfCmd(), iperfArgs...)
 	}
 
-	// Execute the command
+	// Execute the command with retry logic
 	cfg.Logger.Debug("Running iperf3 command",
 		"target", cfg.Target,
 		"port", cfg.Port,
@@ -240,8 +241,56 @@ func (r *DefaultRunner) Run(ctx context.Context, cfg Config) Result {
 		"args", iperfArgs,
 	)
 
-	// Use CombinedOutput to capture both stdout and stderr
-	output, err := cmd.CombinedOutput()
+	// Retry logic for recoverable errors
+	const maxRetries = 3
+	const retryDelay = 3 * time.Second
+
+	var output []byte
+	var err error
+	var lastCommandString string
+	var lastIperf3Output string
+
+	// **BẮT ĐẦU VÒNG LẶP THỬ LẠI**
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		// Luôn kiểm tra xem context đã bị hủy chưa (do scrape timeout)
+		if ctx.Err() != nil {
+			cfg.Logger.Warn("Probe cancelled before retry attempt, stopping.", "attempt", attempt)
+			err = ctx.Err() // Gán lỗi context để báo cáo ở cuối
+			break
+		}
+
+		if attempt > 1 {
+			cfg.Logger.Info("Retrying iPerf3 test due to recoverable error...", "attempt", attempt, "max_retries", maxRetries)
+			time.Sleep(retryDelay) // Chỉ chờ nếu đây là lần thử lại
+		}
+
+		// Tạo lại command cho mỗi lần thử
+		if ctx != nil {
+			cmd = execCommandContext(ctx, GetIperfCmd(), iperfArgs...)
+		} else {
+			cmd = execCommand(GetIperfCmd(), iperfArgs...)
+		}
+
+		lastCommandString = cmd.String() // Lưu lại để ghi log
+		output, err = cmd.CombinedOutput()
+		lastIperf3Output = string(bytes.TrimSpace(output)) // Lưu lại output của lần chạy cuối
+
+		// **Nếu thành công, thoát khỏi vòng lặp ngay lập tức**
+		if err == nil {
+			break
+		}
+
+		// **Phân tích lỗi để quyết định có thử lại hay không**
+		isRetryable := strings.Contains(lastIperf3Output, "Connection refused") ||
+			strings.Contains(lastIperf3Output, "the server is busy") ||
+			strings.Contains(lastIperf3Output, "Connection reset by peer")
+
+		// Nếu lỗi không thể phục hồi, hoặc đã hết số lần thử, thoát vòng lặp
+		if !isRetryable || attempt == maxRetries {
+			break
+		}
+	}
+	// **KẾT THÚC VÒNG LẶP THỬ LẠI**
 
 	// Enhanced error handling with detailed categorization
 	if err != nil {
@@ -251,22 +300,23 @@ func (r *DefaultRunner) Run(ctx context.Context, cfg Config) Result {
 		if errors.As(err, &exitErr) {
 			// This is the case of "exit status 1" or similar
 			cfg.Logger.Error(
-				"iPerf3 test failed", // New, clearer message
-				"reason", "iperf3 reported a connection error.",
+				"iPerf3 test failed after all retries", // Updated message
+				"reason", "iperf3 reported a final connection error.",
 				"exit_code", exitErr.ExitCode(),
 				// This line is most important, it prints detailed error from iperf3
-				"iperf3_output", string(bytes.TrimSpace(output)),
-				"command", cmd.String(),
+				"iperf3_output", lastIperf3Output,
+				"command", lastCommandString,
 			)
 
-			result.Error = fmt.Errorf("iperf3 execution failed with exit code %d: %s", exitErr.ExitCode(), string(bytes.TrimSpace(output)))
+			result.Error = fmt.Errorf("iperf3 execution failed with exit code %d: %s", exitErr.ExitCode(), lastIperf3Output)
 
-		// Handle other error cases (e.g., process killed)
+			// Handle other error cases (e.g., process killed)
 		} else if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
 			cfg.Logger.Warn(
 				"iPerf3 process was killed",
-				"reason", "Operation timed out, likely due to Prometheus scrape timeout.",
-				"command", cmd.String(),
+				"reason", "Process was likely killed by scrape timeout.",
+				"error_details", err.Error(),
+				"command", lastCommandString,
 			)
 
 			result.Error = fmt.Errorf("iperf3 execution timed out or was canceled: %w", err)
@@ -276,7 +326,7 @@ func (r *DefaultRunner) Run(ctx context.Context, cfg Config) Result {
 				"Failed to execute iperf3 command",
 				"reason", "An unexpected execution error occurred.",
 				"error_details", err.Error(),
-				"command", cmd.String(),
+				"command", lastCommandString,
 			)
 
 			result.Error = fmt.Errorf("iperf3 execution failed: %w", err)

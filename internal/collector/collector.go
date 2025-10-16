@@ -47,35 +47,35 @@ var (
 
 // ProbeConfig represents the configuration for a single probe.
 type ProbeConfig struct {
-	Target         string
-	Port           int
-	Period         time.Duration
-	Timeout        time.Duration
-	ReverseMode    bool
-	Bidirectional  bool // Enhanced feature by ThanhDeptr: run both upload and download tests
-	UDPMode        bool
-	Bitrate        string
-	BindAddress    string // Source IP address to bind to (-B parameter)
-	Parallel       int    // Number of parallel streams (-P parameter)
-	Context        context.Context // Request context for proper cancellation
+	Target        string
+	Port          int
+	Period        time.Duration
+	Timeout       time.Duration
+	ReverseMode   bool
+	Bidirectional bool // Enhanced feature by ThanhDeptr: run both upload and download tests
+	UDPMode       bool
+	Bitrate       string
+	BindAddress   string          // Source IP address to bind to (-B parameter)
+	Parallel      int             // Number of parallel streams (-P parameter)
+	Context       context.Context // Request context for proper cancellation
 }
 
 // Collector implements the prometheus.Collector interface for iperf3 metrics.
 type Collector struct {
-	target         string
-	port           int
-	period         time.Duration
-	timeout        time.Duration
-	mutex          sync.RWMutex
-	reverse        bool
-	bidirectional  bool // Enhanced feature by ThanhDeptr
-	udpMode        bool
-	bitrate        string
-	bindAddress    string
-	parallel       int
-	context        context.Context // Request context for proper cancellation
-	logger         *slog.Logger
-	runner         iperf.Runner
+	target        string
+	port          int
+	period        time.Duration
+	timeout       time.Duration
+	mutex         sync.RWMutex
+	reverse       bool
+	bidirectional bool // Enhanced feature by ThanhDeptr
+	udpMode       bool
+	bitrate       string
+	bindAddress   string
+	parallel      int
+	context       context.Context // Request context for proper cancellation
+	logger        *slog.Logger
+	runner        iperf.Runner
 
 	// Metrics
 	up              *prometheus.Desc
@@ -114,19 +114,19 @@ func NewCollectorWithRunner(config ProbeConfig, logger *slog.Logger, runner iper
 	labels := []string{"target", "port", "direction"}
 
 	return &Collector{
-		target:         config.Target,
-		port:           config.Port,
-		period:         config.Period,
-		timeout:        config.Timeout,
-		reverse:        config.ReverseMode,
-		bidirectional:  config.Bidirectional,
-		udpMode:        config.UDPMode,
-		bitrate:        config.Bitrate,
-		bindAddress:    config.BindAddress,
-		parallel:       config.Parallel,
-		context:        config.Context,
-		logger:         logger,
-		runner:         runner,
+		target:        config.Target,
+		port:          config.Port,
+		period:        config.Period,
+		timeout:       config.Timeout,
+		reverse:       config.ReverseMode,
+		bidirectional: config.Bidirectional,
+		udpMode:       config.UDPMode,
+		bitrate:       config.Bitrate,
+		bindAddress:   config.BindAddress,
+		parallel:      config.Parallel,
+		context:       config.Context,
+		logger:        logger,
+		runner:        runner,
 
 		// Define metrics with labels
 		up: prometheus.NewDesc(
@@ -287,11 +287,11 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	if c.bidirectional {
 		// Run both upload and download tests sequentially to avoid conflicts
 		c.logger.Debug("Running bidirectional test sequentially", "target", c.target, "port", c.port)
-		
+
 		// Create separate context for each test to avoid timeout issues
 		uploadCtx, uploadCancel := context.WithTimeout(c.context, c.timeout)
 		defer uploadCancel()
-		
+
 		// Run upload test (no -R flag)
 		c.logger.Debug("Starting upload test", "target", c.target, "bind_address", c.bindAddress)
 		uploadResult := c.runner.Run(uploadCtx, iperf.Config{
@@ -453,11 +453,11 @@ func (c *Collector) emitCalculatedMetrics(ch chan<- prometheus.Metric, result ip
 	var uploadLatency, downloadLatency float64
 	if !result.UDPMode && result.SentSeconds > 0 {
 		// TCP mode: estimate latency from retransmits
-		uploadLatency = (result.Retransmits * 100) / result.SentSeconds // Rough estimate in ms
+		uploadLatency = (result.Retransmits * 100) / result.SentSeconds       // Rough estimate in ms
 		downloadLatency = (result.Retransmits * 100) / result.ReceivedSeconds // Rough estimate in ms
 	} else if result.UDPMode {
 		// UDP mode: use jitter as latency indicator
-		uploadLatency = result.SentJitter * 1000 // Convert to ms
+		uploadLatency = result.SentJitter * 1000       // Convert to ms
 		downloadLatency = result.ReceivedJitter * 1000 // Convert to ms
 	}
 
