@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os/exec"
@@ -225,9 +226,6 @@ func (r *DefaultRunner) Run(ctx context.Context, cfg Config) Result {
 		cmd = execCommand(GetIperfCmd(), iperfArgs...)
 	}
 
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
 	// Execute the command
 	cfg.Logger.Debug("Running iperf3 command",
 		"target", cfg.Target,
@@ -242,23 +240,43 @@ func (r *DefaultRunner) Run(ctx context.Context, cfg Config) Result {
 		"args", iperfArgs,
 	)
 
-	out, err := cmd.Output()
+	// Use CombinedOutput to capture both stdout and stderr
+	output, err := cmd.CombinedOutput()
+
+	// Enhanced error handling with detailed categorization
 	if err != nil {
-		stderrOutput := stderr.String()
-		if stderrOutput != "" {
-			cfg.Logger.Error("Failed to run iperf3",
-				"err", err,
-				"stderr", stderrOutput,
-				"command", GetIperfCmd(),
-				"args", iperfArgs,
+		var exitErr *exec.ExitError
+
+		// Check if this is an exit error (process exited with non-zero code)
+		if errors.As(err, &exitErr) {
+			// This is the case of "exit status 1" or similar
+			cfg.Logger.Error(
+				"iPerf3 test failed", // New, clearer message
+				"reason", "iperf3 reported a connection error.",
+				"exit_code", exitErr.ExitCode(),
+				// This line is most important, it prints detailed error from iperf3
+				"iperf3_output", string(bytes.TrimSpace(output)),
+				"command", cmd.String(),
 			)
 
-			result.Error = fmt.Errorf("iperf3 execution failed: %w: %s", err, stderrOutput)
+			result.Error = fmt.Errorf("iperf3 execution failed with exit code %d: %s", exitErr.ExitCode(), string(bytes.TrimSpace(output)))
+
+		// Handle other error cases (e.g., process killed)
+		} else if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			cfg.Logger.Warn(
+				"iPerf3 process was killed",
+				"reason", "Operation timed out, likely due to Prometheus scrape timeout.",
+				"command", cmd.String(),
+			)
+
+			result.Error = fmt.Errorf("iperf3 execution timed out or was canceled: %w", err)
+
 		} else {
-			cfg.Logger.Error("Failed to run iperf3",
-				"err", err,
-				"command", GetIperfCmd(),
-				"args", iperfArgs,
+			cfg.Logger.Error(
+				"Failed to execute iperf3 command",
+				"reason", "An unexpected execution error occurred.",
+				"error_details", err.Error(),
+				"command", cmd.String(),
 			)
 
 			result.Error = fmt.Errorf("iperf3 execution failed: %w", err)
@@ -266,6 +284,9 @@ func (r *DefaultRunner) Run(ctx context.Context, cfg Config) Result {
 
 		return result
 	}
+
+	// If no error, continue processing output as normal...
+	out := output
 
 	// Parse the JSON output
 	var raw rawResult
