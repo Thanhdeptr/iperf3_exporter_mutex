@@ -260,7 +260,11 @@ func (r *DefaultRunner) Run(ctx context.Context, cfg Config) Result {
 		}
 
 		if attempt > 1 {
-			cfg.Logger.Info("Retrying iPerf3 test due to recoverable error...", "attempt", attempt, "max_retries", maxRetries)
+			cfg.Logger.Info("Retrying iPerf3 test due to recoverable error...", 
+				"attempt", attempt, 
+				"max_retries", maxRetries,
+				"error", err.Error(),
+				"output", lastIperf3Output)
 			time.Sleep(retryDelay) // Chỉ chờ nếu đây là lần thử lại
 		}
 
@@ -281,9 +285,39 @@ func (r *DefaultRunner) Run(ctx context.Context, cfg Config) Result {
 		}
 
 		// **Phân tích lỗi để quyết định có thử lại hay không**
-		isRetryable := strings.Contains(lastIperf3Output, "Connection refused") ||
-			strings.Contains(lastIperf3Output, "the server is busy") ||
-			strings.Contains(lastIperf3Output, "Connection reset by peer")
+		var isRetryable bool
+		
+		// Check for specific iperf3 error messages
+		if lastIperf3Output != "" {
+			isRetryable = strings.Contains(lastIperf3Output, "Connection refused") ||
+						  strings.Contains(lastIperf3Output, "the server is busy") ||
+						  strings.Contains(lastIperf3Output, "Connection reset by peer")
+		} else {
+			// If no output but we have an error, check if it's a retryable runtime error
+			var exitErr *exec.ExitError
+			if errors.As(err, &exitErr) {
+				// Retry on exit code -1 (often process killed) or other recoverable codes
+				isRetryable = exitErr.ExitCode() == -1 || exitErr.ExitCode() == 1
+			} else {
+				// For non-exit errors (like context cancelled), don't retry
+				isRetryable = false
+			}
+		}
+
+		// Log retry decision for debugging
+		if attempt < maxRetries {
+			if isRetryable {
+				cfg.Logger.Debug("Error is retryable, will retry", 
+					"attempt", attempt, 
+					"error", err.Error(),
+					"output", lastIperf3Output)
+			} else {
+				cfg.Logger.Debug("Error is not retryable, stopping", 
+					"attempt", attempt, 
+					"error", err.Error(),
+					"output", lastIperf3Output)
+			}
+		}
 
 		// Nếu lỗi không thể phục hồi, hoặc đã hết số lần thử, thoát vòng lặp
 		if !isRetryable || attempt == maxRetries {
