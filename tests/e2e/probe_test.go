@@ -160,11 +160,11 @@ func TestProbeEndpoint(t *testing.T) {
 		// Verify metrics contain expected values using regex patterns
 		expectedPatterns := []*regexp.Regexp{
 			regexp.MustCompile(`iperf3_up\{direction="upload",port="5201",target="test.example.com"\} 1`),
-			regexp.MustCompile(`iperf3_sent_seconds\{direction="upload",port="5201",target="test.example.com"\} 5`),
-			regexp.MustCompile(`iperf3_sent_bytes\{direction="upload",port="5201",target="test.example.com"\} 5\.24288e\+06`),
-			regexp.MustCompile(`iperf3_received_seconds\{direction="upload",port="5201",target="test.example.com"\} 5`),
-			regexp.MustCompile(`iperf3_received_bytes\{direction="upload",port="5201",target="test.example.com"\} 5\.24288e\+06`),
+			regexp.MustCompile(`iperf3_bandwidth_upload_mbps\{direction="upload",port="5201",target="test.example.com"\} 8\.388608`),
+			regexp.MustCompile(`iperf3_bandwidth_download_mbps\{direction="upload",port="5201",target="test.example.com"\} 8\.388608`),
 			regexp.MustCompile(`iperf3_retransmits\{direction="upload",port="5201",target="test.example.com"\} 0`),
+			regexp.MustCompile(`iperf3_jitter_ms\{direction="upload",port="5201",target="test.example.com"\} 0`),
+			// Optionally, you can also check ping metrics if mock/test logic is updated accordingly
 		}
 
 		for _, pattern := range expectedPatterns {

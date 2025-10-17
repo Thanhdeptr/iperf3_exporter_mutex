@@ -123,20 +123,24 @@ scrape_configs:
 
 ## Metrics
 
-The exporter exposes the following metrics:
+The exporter in v3.0.0 exposes only the most important (core) network metrics. Metrics are now grouped, simplified, and designed for clarity and focus:
 
+**iPerf3 Metrics (Focus Only):**
 - `iperf3_up`: Whether the last iPerf3 probe was successful
-- `iperf3_sent_bytes`: Total bytes sent
-- `iperf3_received_bytes`: Total bytes received
-- `iperf3_sent_seconds`: Total seconds spent sending
-- `iperf3_received_seconds`: Total seconds spent receiving
-- `iperf3_retransmits`: Total retransmits
 - `iperf3_bandwidth_upload_mbps`: Upload bandwidth in Mbps
 - `iperf3_bandwidth_download_mbps`: Download bandwidth in Mbps
-- `iperf3_latency_upload_ms`: Upload latency in milliseconds
-- `iperf3_latency_download_ms`: Download latency in milliseconds
-- `iperf3_packet_loss_upload_percent`: Upload packet loss percentage
-- `iperf3_packet_loss_download_percent`: Download packet loss percentage
+- `iperf3_retransmits`: TCP retransmit count (quality/stability)
+- `iperf3_jitter_ms`: UDP jitter, milliseconds (latency fluctuation)
+
+**Ping Metrics:**
+- `ping_up`: Whether ping probe to target was successful
+- `ping_packet_loss_percent`: Percent packet loss for the test
+- `ping_latency_average_ms`: Average round-trip latency (ms)
+- `ping_latency_maximum_ms`: Max round-trip latency (ms)
+- `ping_latency_minimum_ms`: Min round-trip latency (ms)
+
+> **NOTE:** Metrics such as `sent_bytes`, `received_bytes`, `sent_seconds`, etc. have been removed in favor of clarity. You get core, actionable, and easy-to-visualize metrics for direct use in Grafana dashboards and alerting.
+
 
 ## Contributing
 

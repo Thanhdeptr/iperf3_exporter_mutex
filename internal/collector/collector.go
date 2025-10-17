@@ -17,7 +17,10 @@ package collector
 import (
 	"context"
 	"log/slog"
+	"os/exec"
+	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -45,6 +48,15 @@ var (
 	)
 )
 
+// PingResult stores the results of a ping execution.
+type PingResult struct {
+	Success      bool
+	PacketLoss   float64
+	AvgLatencyMs float64
+	MaxLatencyMs float64
+	MinLatencyMs float64
+}
+
 // ProbeConfig represents the configuration for a single probe.
 type ProbeConfig struct {
 	Target        string
@@ -60,7 +72,7 @@ type ProbeConfig struct {
 	Context       context.Context // Request context for proper cancellation
 }
 
-// Collector implements the prometheus.Collector interface for iperf3 metrics.
+// Collector implements the prometheus.Collector interface for iperf3 and ping metrics.
 type Collector struct {
 	target        string
 	port          int
@@ -68,39 +80,29 @@ type Collector struct {
 	timeout       time.Duration
 	mutex         sync.RWMutex
 	reverse       bool
-	bidirectional bool // Enhanced feature by ThanhDeptr
+	bidirectional bool
 	udpMode       bool
 	bitrate       string
 	bindAddress   string
 	parallel      int
-	context       context.Context // Request context for proper cancellation
+	context       context.Context
 	logger        *slog.Logger
 	runner        iperf.Runner
 
-	// Metrics
-	up              *prometheus.Desc
-	sentSeconds     *prometheus.Desc
-	sentBytes       *prometheus.Desc
-	receivedSeconds *prometheus.Desc
-	receivedBytes   *prometheus.Desc
-	// TCP-specific metrics
-	retransmits *prometheus.Desc
-	// UDP-specific metrics
-	sentPackets     *prometheus.Desc
-	sentJitter      *prometheus.Desc
-	sentLostPackets *prometheus.Desc
-	sentLostPercent *prometheus.Desc
-	recvPackets     *prometheus.Desc
-	recvJitter      *prometheus.Desc
-	recvLostPackets *prometheus.Desc
-	recvLostPercent *prometheus.Desc
-	// Calculated metrics (Enhanced by ThanhDeptr)
+	// --- Metrics ---
+	// iPerf3
+	up                    *prometheus.Desc
 	bandwidthUploadMbps   *prometheus.Desc
 	bandwidthDownloadMbps *prometheus.Desc
-	packetLossUpload      *prometheus.Desc
-	packetLossDownload    *prometheus.Desc
-	latencyUpload         *prometheus.Desc
-	latencyDownload       *prometheus.Desc
+	retransmits           *prometheus.Desc // TCP only
+	jitter                *prometheus.Desc // UDP only
+
+	// Ping
+	pingUp                *prometheus.Desc
+	pingPacketLossPercent *prometheus.Desc
+	pingLatencyAvgMs      *prometheus.Desc
+	pingLatencyMaxMs      *prometheus.Desc
+	pingLatencyMinMs      *prometheus.Desc
 }
 
 // NewCollector creates a new Collector for iperf3 metrics.
@@ -110,8 +112,10 @@ func NewCollector(config ProbeConfig, logger *slog.Logger) *Collector {
 
 // NewCollectorWithRunner creates a new Collector for iperf3 metrics with a custom runner.
 func NewCollectorWithRunner(config ProbeConfig, logger *slog.Logger, runner iperf.Runner) *Collector {
-	// Common labels for all metrics
-	labels := []string{"target", "port", "direction"}
+	// Common labels for iPerf3 metrics
+	iperfLabels := []string{"target", "port", "direction"}
+	// Common labels for Ping metrics
+	pingLabels := []string{"target"}
 
 	return &Collector{
 		target:        config.Target,
@@ -128,149 +132,84 @@ func NewCollectorWithRunner(config ProbeConfig, logger *slog.Logger, runner iper
 		logger:        logger,
 		runner:        runner,
 
-		// Define metrics with labels
+		// --- Define metrics with labels ---
+		// iPerf3 Metrics
 		up: prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, "", "up"),
 			"Was the last iperf3 probe successful (1 for success, 0 for failure).",
-			labels, nil,
+			iperfLabels, nil,
 		),
-		sentSeconds: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, "", "sent_seconds"),
-			"Total seconds spent sending packets.",
-			labels, nil,
-		),
-		sentBytes: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, "", "sent_bytes"),
-			"Total sent bytes for the last test run.",
-			labels, nil,
-		),
-		receivedSeconds: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, "", "received_seconds"),
-			"Total seconds spent receiving packets.",
-			labels, nil,
-		),
-		receivedBytes: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, "", "received_bytes"),
-			"Total received bytes for the last test run.",
-			labels, nil,
-		),
-		// TCP-specific metrics
-		retransmits: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, "", "retransmits"),
-			"Total retransmits for the last test run.",
-			labels, nil,
-		),
-		// UDP-specific metrics
-		sentPackets: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, "", "sent_packets"),
-			"Total sent packets for the last UDP test run.",
-			labels, nil,
-		),
-		sentJitter: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, "", "sent_jitter_ms"),
-			"Jitter in milliseconds for sent packets in UDP mode.",
-			labels, nil,
-		),
-		sentLostPackets: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, "", "sent_lost_packets"),
-			"Total lost packets from the sender in the last UDP test run.",
-			labels, nil,
-		),
-		sentLostPercent: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, "", "sent_lost_percent"),
-			"Percentage of packets lost from the sender in the last UDP test run.",
-			labels, nil,
-		),
-		recvPackets: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, "", "received_packets"),
-			"Total received packets for the last UDP test run.",
-			labels, nil,
-		),
-		recvJitter: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, "", "received_jitter_ms"),
-			"Jitter in milliseconds for received packets in UDP mode.",
-			labels, nil,
-		),
-		recvLostPackets: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, "", "received_lost_packets"),
-			"Total lost packets at the receiver in the last UDP test run.",
-			labels, nil,
-		),
-		recvLostPercent: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, "", "received_lost_percent"),
-			"Percentage of packets lost at the receiver in the last UDP test run.",
-			labels, nil,
-		),
-		// Calculated metrics (Enhanced by ThanhDeptr)
 		bandwidthUploadMbps: prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, "", "bandwidth_upload_mbps"),
-			"Upload bandwidth in Mbps (calculated from sent bytes and time).",
-			labels, nil,
+			"Upload bandwidth in Mbps.",
+			iperfLabels, nil,
 		),
 		bandwidthDownloadMbps: prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, "", "bandwidth_download_mbps"),
-			"Download bandwidth in Mbps (calculated from received bytes and time).",
-			labels, nil,
+			"Download bandwidth in Mbps.",
+			iperfLabels, nil,
 		),
-		packetLossUpload: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, "", "packet_loss_upload_percent"),
-			"Upload packet loss percentage (calculated from sent vs received bytes).",
-			labels, nil,
+		retransmits: prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, "", "retransmits"),
+			"Total retransmits for the last TCP test run.",
+			iperfLabels, nil,
 		),
-		packetLossDownload: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, "", "packet_loss_download_percent"),
-			"Download packet loss percentage (calculated from sent vs received bytes).",
-			labels, nil,
+		jitter: prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, "", "jitter_ms"),
+			"Jitter in milliseconds for received packets in UDP mode.",
+			iperfLabels, nil,
 		),
-		latencyUpload: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, "", "latency_upload_ms"),
-			"Upload latency in milliseconds (calculated from retransmits and time).",
-			labels, nil,
+		// Ping Metrics
+		pingUp: prometheus.NewDesc(
+			prometheus.BuildFQName("ping", "", "up"),
+			"Was the last ping probe successful (1 for success, 0 for failure).",
+			pingLabels, nil,
 		),
-		latencyDownload: prometheus.NewDesc(
-			prometheus.BuildFQName(namespace, "", "latency_download_ms"),
-			"Download latency in milliseconds (calculated from retransmits and time).",
-			labels, nil,
+		pingPacketLossPercent: prometheus.NewDesc(
+			prometheus.BuildFQName("ping", "", "packet_loss_percent"),
+			"Ping packet loss in percent.",
+			pingLabels, nil,
+		),
+		pingLatencyAvgMs: prometheus.NewDesc(
+			prometheus.BuildFQName("ping", "", "latency_average_ms"),
+			"Ping average latency in milliseconds.",
+			pingLabels, nil,
+		),
+		pingLatencyMaxMs: prometheus.NewDesc(
+			prometheus.BuildFQName("ping", "", "latency_maximum_ms"),
+			"Ping maximum latency in milliseconds.",
+			pingLabels, nil,
+		),
+		pingLatencyMinMs: prometheus.NewDesc(
+			prometheus.BuildFQName("ping", "", "latency_minimum_ms"),
+			"Ping minimum latency in milliseconds.",
+			pingLabels, nil,
 		),
 	}
 }
 
 // Describe implements the prometheus.Collector interface.
 func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
+	// iPerf3
 	ch <- c.up
-	ch <- c.sentSeconds
-	ch <- c.sentBytes
-	ch <- c.receivedSeconds
-	ch <- c.receivedBytes
-
-	// TCP-specific metrics
-	ch <- c.retransmits
-
-	// UDP-specific metrics
-	ch <- c.sentPackets
-	ch <- c.sentJitter
-	ch <- c.sentLostPackets
-	ch <- c.sentLostPercent
-	ch <- c.recvPackets
-	ch <- c.recvJitter
-	ch <- c.recvLostPackets
-	ch <- c.recvLostPercent
-
-	// Calculated metrics (Enhanced by ThanhDeptr)
 	ch <- c.bandwidthUploadMbps
 	ch <- c.bandwidthDownloadMbps
-	ch <- c.packetLossUpload
-	ch <- c.packetLossDownload
-	ch <- c.latencyUpload
-	ch <- c.latencyDownload
+	ch <- c.retransmits
+	ch <- c.jitter
+
+	// Ping
+	ch <- c.pingUp
+	ch <- c.pingPacketLossPercent
+	ch <- c.pingLatencyAvgMs
+	ch <- c.pingLatencyMaxMs
+	ch <- c.pingLatencyMinMs
 }
 
 // Collect implements the prometheus.Collector interface.
 func (c *Collector) Collect(ch chan<- prometheus.Metric) {
-	c.mutex.Lock() // To protect metrics from concurrent collects.
+	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
-	// Use request context if available, otherwise create one with timeout
 	var ctx context.Context
 	var cancel context.CancelFunc
 	if c.context != nil {
@@ -280,192 +219,153 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	}
 	defer cancel()
 
-	// Common label values for all metrics
-	labelValues := []string{c.target, strconv.Itoa(c.port)}
-
-	// Check if bidirectional mode is enabled (enhanced feature by ThanhDeptr)
+	// --- Run iPerf3 Test ---
+	iperfLabelValues := []string{c.target, strconv.Itoa(c.port)}
 	if c.bidirectional {
-		// Run both upload and download tests sequentially to avoid conflicts
-		c.logger.Debug("Running bidirectional test sequentially", "target", c.target, "port", c.port)
+		c.logger.Debug("Running bidirectional test sequentially", "target", c.target)
 
-		// Create separate context for each test to avoid timeout issues
 		uploadCtx, uploadCancel := context.WithTimeout(c.context, c.timeout)
 		defer uploadCancel()
-
-		// Run upload test (no -R flag)
-		c.logger.Debug("Starting upload test", "target", c.target, "bind_address", c.bindAddress)
 		uploadResult := c.runner.Run(uploadCtx, iperf.Config{
-			Target:      c.target,
-			Port:        c.port,
-			Period:      c.period,
-			Timeout:     c.timeout,
-			ReverseMode: false, // Upload test
-			UDPMode:     c.udpMode,
-			Bitrate:     c.bitrate,
-			BindAddress: c.bindAddress,
-			Parallel:    c.parallel,
-			Logger:      c.logger,
+			Target: c.target, Port: c.port, Period: c.period, Timeout: c.timeout,
+			ReverseMode: false, UDPMode: c.udpMode, Bitrate: c.bitrate,
+			BindAddress: c.bindAddress, Parallel: c.parallel, Logger: c.logger,
 		})
+		c.processIperfResult(ch, uploadResult, append(iperfLabelValues, "upload"))
 
-		// Small delay between tests to avoid resource conflicts
-		// Increased to 35s to allow iPerf3 server to fully reset
 		time.Sleep(35 * time.Second)
 
-		// Create separate context for download test
 		downloadCtx, downloadCancel := context.WithTimeout(c.context, c.timeout)
 		defer downloadCancel()
-
-		// Run download test (with -R flag)
-		c.logger.Debug("Starting download test", "target", c.target, "bind_address", c.bindAddress)
 		downloadResult := c.runner.Run(downloadCtx, iperf.Config{
-			Target:      c.target,
-			Port:        c.port,
-			Period:      c.period,
-			Timeout:     c.timeout,
-			ReverseMode: true, // Download test
-			UDPMode:     c.udpMode,
-			Bitrate:     c.bitrate,
-			BindAddress: c.bindAddress,
-			Parallel:    c.parallel,
-			Logger:      c.logger,
+			Target: c.target, Port: c.port, Period: c.period, Timeout: c.timeout,
+			ReverseMode: true, UDPMode: c.udpMode, Bitrate: c.bitrate,
+			BindAddress: c.bindAddress, Parallel: c.parallel, Logger: c.logger,
 		})
-
-		// Process upload results
-		uploadLabels := append(labelValues, "upload")
-		c.processResult(ch, uploadResult, uploadLabels)
-
-		// Process download results
-		downloadLabels := append(labelValues, "download")
-		c.processResult(ch, downloadResult, downloadLabels)
-
-		return
+		c.processIperfResult(ch, downloadResult, append(iperfLabelValues, "download"))
+	} else {
+		result := c.runner.Run(ctx, iperf.Config{
+			Target: c.target, Port: c.port, Period: c.period, Timeout: c.timeout,
+			ReverseMode: c.reverse, UDPMode: c.udpMode, Bitrate: c.bitrate,
+			BindAddress: c.bindAddress, Parallel: c.parallel, Logger: c.logger,
+		})
+		direction := "upload"
+		if c.reverse {
+			direction = "download"
+		}
+		c.processIperfResult(ch, result, append(iperfLabelValues, direction))
 	}
 
-	// Original single-direction test
-	result := c.runner.Run(ctx, iperf.Config{
-		Target:      c.target,
-		Port:        c.port,
-		Period:      c.period,
-		Timeout:     c.timeout,
-		ReverseMode: c.reverse,
-		UDPMode:     c.udpMode,
-		Bitrate:     c.bitrate,
-		BindAddress: c.bindAddress,
-		Parallel:    c.parallel,
-		Logger:      c.logger,
-	})
-
-	// Process single-direction result
-	direction := "upload"
-	if c.reverse {
-		direction = "download"
-	}
-	singleLabels := append(labelValues, direction)
-	c.processResult(ch, result, singleLabels)
+	// --- Run Ping Test ---
+	pingLabelValues := []string{c.target}
+	pingResult := c.runPing(ctx)
+	c.processPingResult(ch, pingResult, pingLabelValues)
 }
 
-// processResult is a helper function to process iperf3 test results and emit metrics
-func (c *Collector) processResult(ch chan<- prometheus.Metric, result iperf.Result, labelValues []string) {
-	// Set metrics based on result
+// processIperfResult processes iperf3 results and emits metrics.
+func (c *Collector) processIperfResult(ch chan<- prometheus.Metric, result iperf.Result, labelValues []string) {
 	if result.Success {
 		ch <- prometheus.MustNewConstMetric(c.up, prometheus.GaugeValue, 1, labelValues...)
-		ch <- prometheus.MustNewConstMetric(c.sentSeconds, prometheus.GaugeValue, result.SentSeconds, labelValues...)
-		ch <- prometheus.MustNewConstMetric(c.sentBytes, prometheus.GaugeValue, result.SentBytes, labelValues...)
-		ch <- prometheus.MustNewConstMetric(c.receivedSeconds, prometheus.GaugeValue, result.ReceivedSeconds, labelValues...)
-		ch <- prometheus.MustNewConstMetric(c.receivedBytes, prometheus.GaugeValue, result.ReceivedBytes, labelValues...)
 
-		// Retransmits is only relevant in TCP mode
-		if !result.UDPMode {
-			ch <- prometheus.MustNewConstMetric(c.retransmits, prometheus.GaugeValue, result.Retransmits, labelValues...)
+		// Calculate and emit bandwidth
+		var uploadMbps, downloadMbps float64
+		if result.SentBitsPerSecond > 0 {
+			uploadMbps = result.SentBitsPerSecond / 1000000
 		}
+		if result.ReceivedBitsPerSecond > 0 {
+			downloadMbps = result.ReceivedBitsPerSecond / 1000000
+		}
+		ch <- prometheus.MustNewConstMetric(c.bandwidthUploadMbps, prometheus.GaugeValue, uploadMbps, labelValues...)
+		ch <- prometheus.MustNewConstMetric(c.bandwidthDownloadMbps, prometheus.GaugeValue, downloadMbps, labelValues...)
 
-		// Include UDP-specific metrics when in UDP mode
+		// Emit mode-specific metrics
 		if result.UDPMode {
-			ch <- prometheus.MustNewConstMetric(c.sentPackets, prometheus.GaugeValue, result.SentPackets, labelValues...)
-			ch <- prometheus.MustNewConstMetric(c.sentJitter, prometheus.GaugeValue, result.SentJitter, labelValues...)
-			ch <- prometheus.MustNewConstMetric(c.sentLostPackets, prometheus.GaugeValue, result.SentLostPackets, labelValues...)
-			ch <- prometheus.MustNewConstMetric(c.sentLostPercent, prometheus.GaugeValue, result.SentLostPercent, labelValues...)
-			ch <- prometheus.MustNewConstMetric(c.recvPackets, prometheus.GaugeValue, result.ReceivedPackets, labelValues...)
-			ch <- prometheus.MustNewConstMetric(c.recvJitter, prometheus.GaugeValue, result.ReceivedJitter, labelValues...)
-			ch <- prometheus.MustNewConstMetric(c.recvLostPackets, prometheus.GaugeValue, result.ReceivedLostPackets, labelValues...)
-			ch <- prometheus.MustNewConstMetric(c.recvLostPercent, prometheus.GaugeValue, result.ReceivedLostPercent, labelValues...)
-		}
-
-		// Calculate and emit computed metrics (Enhanced by ThanhDeptr)
-		c.emitCalculatedMetrics(ch, result, labelValues)
-	} else {
-		// Return common metrics with 0 values when iperf3 fails
-		ch <- prometheus.MustNewConstMetric(c.up, prometheus.GaugeValue, 0, labelValues...)
-		ch <- prometheus.MustNewConstMetric(c.sentSeconds, prometheus.GaugeValue, 0, labelValues...)
-		ch <- prometheus.MustNewConstMetric(c.sentBytes, prometheus.GaugeValue, 0, labelValues...)
-		ch <- prometheus.MustNewConstMetric(c.receivedSeconds, prometheus.GaugeValue, 0, labelValues...)
-		ch <- prometheus.MustNewConstMetric(c.receivedBytes, prometheus.GaugeValue, 0, labelValues...)
-
-		// Only include mode-specific metrics for the active mode
-		if !result.UDPMode {
-			// TCP-specific metrics on failure
-			ch <- prometheus.MustNewConstMetric(c.retransmits, prometheus.GaugeValue, 0, labelValues...)
+			ch <- prometheus.MustNewConstMetric(c.jitter, prometheus.GaugeValue, result.ReceivedJitter, labelValues...)
+			ch <- prometheus.MustNewConstMetric(c.retransmits, prometheus.GaugeValue, 0, labelValues...) // Not applicable for UDP
 		} else {
-			// UDP-specific metrics on failure
-			ch <- prometheus.MustNewConstMetric(c.sentPackets, prometheus.GaugeValue, 0, labelValues...)
-			ch <- prometheus.MustNewConstMetric(c.sentJitter, prometheus.GaugeValue, 0, labelValues...)
-			ch <- prometheus.MustNewConstMetric(c.sentLostPackets, prometheus.GaugeValue, 0, labelValues...)
-			ch <- prometheus.MustNewConstMetric(c.sentLostPercent, prometheus.GaugeValue, 0, labelValues...)
-			ch <- prometheus.MustNewConstMetric(c.recvPackets, prometheus.GaugeValue, 0, labelValues...)
-			ch <- prometheus.MustNewConstMetric(c.recvJitter, prometheus.GaugeValue, 0, labelValues...)
-			ch <- prometheus.MustNewConstMetric(c.recvLostPackets, prometheus.GaugeValue, 0, labelValues...)
-			ch <- prometheus.MustNewConstMetric(c.recvLostPercent, prometheus.GaugeValue, 0, labelValues...)
+			ch <- prometheus.MustNewConstMetric(c.retransmits, prometheus.GaugeValue, result.Retransmits, labelValues...)
+			ch <- prometheus.MustNewConstMetric(c.jitter, prometheus.GaugeValue, 0, labelValues...) // Not applicable for TCP
 		}
-
-		// Emit zero values for calculated metrics on failure
-		c.emitCalculatedMetrics(ch, result, labelValues)
+	} else {
+		// Emit 0 for all metrics on failure
+		ch <- prometheus.MustNewConstMetric(c.up, prometheus.GaugeValue, 0, labelValues...)
+		ch <- prometheus.MustNewConstMetric(c.bandwidthUploadMbps, prometheus.GaugeValue, 0, labelValues...)
+		ch <- prometheus.MustNewConstMetric(c.bandwidthDownloadMbps, prometheus.GaugeValue, 0, labelValues...)
+		ch <- prometheus.MustNewConstMetric(c.retransmits, prometheus.GaugeValue, 0, labelValues...)
+		ch <- prometheus.MustNewConstMetric(c.jitter, prometheus.GaugeValue, 0, labelValues...)
 		IperfErrors.Inc()
 	}
 }
 
-// emitCalculatedMetrics calculates and emits computed metrics (Enhanced by ThanhDeptr)
-func (c *Collector) emitCalculatedMetrics(ch chan<- prometheus.Metric, result iperf.Result, labelValues []string) {
-	// Calculate bandwidth in Mbps
-	var uploadMbps, downloadMbps float64
-	if result.SentSeconds > 0 {
-		uploadMbps = (result.SentBytes * 8) / (result.SentSeconds * 1000000) // Convert to Mbps
+// processPingResult processes ping results and emits metrics.
+func (c *Collector) processPingResult(ch chan<- prometheus.Metric, result PingResult, labelValues []string) {
+	if result.Success {
+		ch <- prometheus.MustNewConstMetric(c.pingUp, prometheus.GaugeValue, 1, labelValues...)
+		ch <- prometheus.MustNewConstMetric(c.pingPacketLossPercent, prometheus.GaugeValue, result.PacketLoss, labelValues...)
+		ch <- prometheus.MustNewConstMetric(c.pingLatencyAvgMs, prometheus.GaugeValue, result.AvgLatencyMs, labelValues...)
+		ch <- prometheus.MustNewConstMetric(c.pingLatencyMaxMs, prometheus.GaugeValue, result.MaxLatencyMs, labelValues...)
+		ch <- prometheus.MustNewConstMetric(c.pingLatencyMinMs, prometheus.GaugeValue, result.MinLatencyMs, labelValues...)
+	} else {
+		ch <- prometheus.MustNewConstMetric(c.pingUp, prometheus.GaugeValue, 0, labelValues...)
+		ch <- prometheus.MustNewConstMetric(c.pingPacketLossPercent, prometheus.GaugeValue, 100, labelValues...) // Report 100% loss on failure
+		ch <- prometheus.MustNewConstMetric(c.pingLatencyAvgMs, prometheus.GaugeValue, 0, labelValues...)
+		ch <- prometheus.MustNewConstMetric(c.pingLatencyMaxMs, prometheus.GaugeValue, 0, labelValues...)
+		ch <- prometheus.MustNewConstMetric(c.pingLatencyMinMs, prometheus.GaugeValue, 0, labelValues...)
 	}
-	if result.ReceivedSeconds > 0 {
-		downloadMbps = (result.ReceivedBytes * 8) / (result.ReceivedSeconds * 1000000) // Convert to Mbps
+}
+
+// runPing executes the ping command and parses its output.
+func (c *Collector) runPing(ctx context.Context) PingResult {
+	// Use -I flag for ping if bind_address is provided (for Linux)
+	args := []string{"-c", "10", "-W", "2", c.target}
+	if c.bindAddress != "" {
+		// Note: -I is for Linux. For macOS/BSD use -S.
+		// This implementation assumes a Linux environment for the exporter.
+		args = append([]string{"-I", c.bindAddress}, args...)
 	}
 
-	// Calculate packet loss percentage
-	var uploadLoss, downloadLoss float64
-	if result.SentBytes > 0 {
-		uploadLoss = ((result.SentBytes - result.ReceivedBytes) / result.SentBytes) * 100
-		if uploadLoss < 0 {
-			uploadLoss = 0 // No negative loss
+	cmd := exec.CommandContext(ctx, "ping", args...)
+
+	c.logger.Debug("Running ping command", "command", strings.Join(cmd.Args, " "))
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		c.logger.Error("Ping command failed", "error", err, "output", string(output))
+		return PingResult{Success: false}
+	}
+
+	return c.parsePingOutput(string(output))
+}
+
+// parsePingOutput extracts metrics from the ping command's output string.
+func (c *Collector) parsePingOutput(out string) PingResult {
+	var loss float64 = 100.0 // Default to 100% loss
+	var min, avg, max float64
+
+	lossRegex := regexp.MustCompile(`(\d+(\.\d+)?)% packet loss`)
+	if match := lossRegex.FindStringSubmatch(out); len(match) > 1 {
+		loss, _ = strconv.ParseFloat(match[1], 64)
+	}
+
+	rttRegex := regexp.MustCompile(`rtt min/avg/max/mdev = ([\d.]+)/([\d.]+)/([\d.]+)/([\d.]+) ms`)
+	if match := rttRegex.FindStringSubmatch(out); len(match) == 5 {
+		min, _ = strconv.ParseFloat(match[1], 64)
+		avg, _ = strconv.ParseFloat(match[2], 64)
+		max, _ = strconv.ParseFloat(match[3], 64)
+	} else {
+		// If RTT line is not found, it's likely a complete failure (e.g., 100% loss)
+		return PingResult{
+			Success:    false, // Mark as failure if no RTT stats are available
+			PacketLoss: loss,
 		}
 	}
-	if result.ReceivedBytes > 0 {
-		downloadLoss = ((result.ReceivedBytes - result.SentBytes) / result.ReceivedBytes) * 100
-		if downloadLoss < 0 {
-			downloadLoss = 0 // No negative loss
-		}
-	}
 
-	// Calculate latency (rough estimation based on retransmits and time)
-	var uploadLatency, downloadLatency float64
-	if !result.UDPMode && result.SentSeconds > 0 {
-		// TCP mode: estimate latency from retransmits
-		uploadLatency = (result.Retransmits * 100) / result.SentSeconds       // Rough estimate in ms
-		downloadLatency = (result.Retransmits * 100) / result.ReceivedSeconds // Rough estimate in ms
-	} else if result.UDPMode {
-		// UDP mode: use jitter as latency indicator
-		uploadLatency = result.SentJitter * 1000       // Convert to ms
-		downloadLatency = result.ReceivedJitter * 1000 // Convert to ms
+	c.logger.Debug("Ping results parsed", "loss", loss, "avg_ms", avg, "max_ms", max, "min_ms", min)
+	return PingResult{
+		Success:      true,
+		PacketLoss:   loss,
+		AvgLatencyMs: avg,
+		MaxLatencyMs: max,
+		MinLatencyMs: min,
 	}
-
-	// Emit calculated metrics
-	ch <- prometheus.MustNewConstMetric(c.bandwidthUploadMbps, prometheus.GaugeValue, uploadMbps, labelValues...)
-	ch <- prometheus.MustNewConstMetric(c.bandwidthDownloadMbps, prometheus.GaugeValue, downloadMbps, labelValues...)
-	ch <- prometheus.MustNewConstMetric(c.packetLossUpload, prometheus.GaugeValue, uploadLoss, labelValues...)
-	ch <- prometheus.MustNewConstMetric(c.packetLossDownload, prometheus.GaugeValue, downloadLoss, labelValues...)
-	ch <- prometheus.MustNewConstMetric(c.latencyUpload, prometheus.GaugeValue, uploadLatency, labelValues...)
-	ch <- prometheus.MustNewConstMetric(c.latencyDownload, prometheus.GaugeValue, downloadLatency, labelValues...)
 }
