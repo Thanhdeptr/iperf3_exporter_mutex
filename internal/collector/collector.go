@@ -256,6 +256,8 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 		c.processIperfResult(ch, result, append(iperfLabelValues, direction))
 	}
 
+	time.Sleep(2 * time.Second) // Add short pause between iperf3 and ping
+
 	// --- Run Ping Test ---
 	pingLabelValues := []string{c.target}
 	pingResult := c.runPing(ctx)
