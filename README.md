@@ -1,4 +1,4 @@
-# iPerf3 Exporter v2 (Enhanced by ThanhDeptr)
+# iPerf3 Exporter v3.1.0 (Enhanced by ThanhDeptr)
 
 A Prometheus exporter for iPerf3 network performance metrics with advanced mutex mechanism to prevent concurrent test conflicts.
 
@@ -20,6 +20,9 @@ A Prometheus exporter for iPerf3 network performance metrics with advanced mutex
 - **Bind Address Support**: Configure specific network interfaces for multi-WAN testing
 - **Parallel Streams**: Enhanced performance with configurable parallel connections
 - **Advanced Metrics**: Calculated bandwidth, latency, and packet loss metrics
+- **Ping Integration**: Combined iPerf3 + Ping testing for comprehensive network monitoring
+- **BusyBox Ping Support**: Compatible with Alpine Linux/BusyBox ping format
+- **Optimized Logging**: Clean, concise logging for better monitoring and debugging
 
 ---
 
@@ -65,7 +68,7 @@ docker run -d \
   -p 9579:9579 \
   --cap-add=NET_ADMIN \
   --cap-add=NET_RAW \
-  hatanthanh/iperf3_exporter:latest
+  hatanthanh/iperf3_exporter:v3.1.0
 ```
 
 ### From Binaries
@@ -123,7 +126,7 @@ scrape_configs:
 
 ## Metrics
 
-The exporter in v3.0.0 exposes only the most important (core) network metrics. Metrics are now grouped, simplified, and designed for clarity and focus:
+The exporter in v3.1.0 exposes only the most important (core) network metrics. Metrics are now grouped, simplified, and designed for clarity and focus:
 
 **iPerf3 Metrics (Focus Only):**
 - `iperf3_up`: Whether the last iPerf3 probe was successful
@@ -132,12 +135,14 @@ The exporter in v3.0.0 exposes only the most important (core) network metrics. M
 - `iperf3_retransmits`: TCP retransmit count (quality/stability)
 - `iperf3_jitter_ms`: UDP jitter, milliseconds (latency fluctuation)
 
-**Ping Metrics:**
-- `ping_up`: Whether ping probe to target was successful
-- `ping_packet_loss_percent`: Percent packet loss for the test
-- `ping_latency_average_ms`: Average round-trip latency (ms)
-- `ping_latency_maximum_ms`: Max round-trip latency (ms)
-- `ping_latency_minimum_ms`: Min round-trip latency (ms)
+**Ping Metrics (v3.1.0):**
+- `ping_up`: Whether ping probe to target was successful (1=success, 0=failure)
+- `ping_packet_loss_percent`: Percent packet loss for the test (0-100%)
+- `ping_latency_average_ms`: Average round-trip latency in milliseconds
+- `ping_latency_maximum_ms`: Maximum round-trip latency in milliseconds  
+- `ping_latency_minimum_ms`: Minimum round-trip latency in milliseconds
+
+> **Ping Integration**: The exporter now automatically runs ping tests after each iPerf3 test to provide comprehensive network monitoring. Ping metrics are collected using the same target and bind_address parameters as the iPerf3 test.
 
 > **NOTE:** Metrics such as `sent_bytes`, `received_bytes`, `sent_seconds`, etc. have been removed in favor of clarity. You get core, actionable, and easy-to-visualize metrics for direct use in Grafana dashboards and alerting.
 

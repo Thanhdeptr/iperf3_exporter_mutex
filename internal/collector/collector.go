@@ -256,11 +256,18 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 		c.processIperfResult(ch, result, append(iperfLabelValues, direction))
 	}
 
-	time.Sleep(2 * time.Second) // Add short pause between iperf3 and ping
+	// Give the network stack a moment to recover after the intense iperf3 test.
+	c.logger.Debug("Pausing for 2 seconds before running ping...")
+	time.Sleep(2 * time.Second)
 
 	// --- Run Ping Test ---
+	// Create a NEW, independent context for ping with its own 10-second timeout.
+	c.logger.Debug("Creating a new independent context for ping test")
+	pingCtx, pingCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer pingCancel()
+
 	pingLabelValues := []string{c.target}
-	pingResult := c.runPing(ctx)
+	pingResult := c.runPing(pingCtx) // <--- Use the new pingCtx
 	c.processPingResult(ch, pingResult, pingLabelValues)
 }
 
@@ -331,12 +338,27 @@ func (c *Collector) runPing(ctx context.Context) PingResult {
 	c.logger.Debug("Running ping command", "command", strings.Join(cmd.Args, " "))
 
 	output, err := cmd.CombinedOutput()
+
+	// ========================================================================
+	// ### LOG MỚI (BẮT ĐẦU) ###
+	// Log tóm tắt kết quả ping thay vì output đầy đủ để tránh log quá dài
+	trimmedOutput := strings.TrimSpace(string(output))
 	if err != nil {
-		c.logger.Error("Ping command failed", "error", err, "output", string(output))
+		c.logger.Info("Ping command failed", "error", err, "output_length", len(trimmedOutput))
+	} else {
+		c.logger.Info("Ping command completed successfully", "output_length", len(trimmedOutput))
+	}
+	// ### LOG MỚI (KẾT THÚC) ###
+	// ========================================================================
+
+	if err != nil {
+		// Log lỗi ngắn gọn, không in output đầy đủ
+		c.logger.Error("Ping command execution failed", "error", err)
 		return PingResult{Success: false}
 	}
 
-	return c.parsePingOutput(string(output))
+	// Truyền output đã được cắt tỉa (trimmed) vào hàm parse
+	return c.parsePingOutput(trimmedOutput)
 }
 
 // parsePingOutput extracts metrics from the ping command's output string.
@@ -349,15 +371,28 @@ func (c *Collector) parsePingOutput(out string) PingResult {
 		loss, _ = strconv.ParseFloat(match[1], 64)
 	}
 
-	rttRegex := regexp.MustCompile(`rtt min/avg/max/mdev = ([\d.]+)/([\d.]+)/([\d.]+)/([\d.]+) ms`)
-	if match := rttRegex.FindStringSubmatch(out); len(match) == 5 {
+	// Support both GNU ping (rtt min/avg/max/mdev) and BusyBox ping (round-trip min/avg/max)
+	rttRegex := regexp.MustCompile(`(?:rtt|round-trip) min/avg/max(?:/mdev)? = ([\d.]+)/([\d.]+)/([\d.]+)(?:/([\d.]+))? ms`)
+	if match := rttRegex.FindStringSubmatch(out); len(match) >= 4 {
 		min, _ = strconv.ParseFloat(match[1], 64)
 		avg, _ = strconv.ParseFloat(match[2], 64)
 		max, _ = strconv.ParseFloat(match[3], 64)
 	} else {
+		// ========================================================================
+		// ### LOG MỚI (BẮT ĐẦU) ###
+		// Log tóm tắt lỗi parse thay vì output đầy đủ
+		c.logger.Warn(
+			"Failed to parse RTT from ping output",
+			"reason", "Regex for RTT statistics did not match",
+			"packet_loss_found", loss,
+			"output_length", len(out),
+		)
+		// ### LOG MỚI (KẾT THÚC) ###
+		// ========================================================================
+
 		// If RTT line is not found, it's likely a complete failure (e.g., 100% loss)
 		return PingResult{
-			Success:    false, // Mark as failure if no RTT stats are available
+			Success:    false, // Mark as failure
 			PacketLoss: loss,
 		}
 	}
