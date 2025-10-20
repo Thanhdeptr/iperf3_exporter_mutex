@@ -263,7 +263,7 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 	// --- Run Ping Test ---
 	// Create a NEW, independent context for ping with its own 10-second timeout.
 	c.logger.Debug("Creating a new independent context for ping test")
-	pingCtx, pingCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	pingCtx, pingCancel := context.WithTimeout(context.Background(),30*time.Second)
 	defer pingCancel()
 
 	pingLabelValues := []string{c.target}
