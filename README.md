@@ -1,4 +1,4 @@
-# iPerf3 Exporter v3.1.0 (Enhanced by ThanhDeptr)
+# iPerf3 Exporter v3.1.1 (Enhanced by ThanhDeptr)
 
 A Prometheus exporter for iPerf3 network performance metrics with advanced mutex mechanism to prevent concurrent test conflicts.
 
@@ -64,12 +64,23 @@ The iPerf3 exporter allows iPerf3 probing of endpoints for Prometheus monitoring
 
 ```bash
 docker run -d \
-  --name iperf3_exporter \
-  -p 9579:9579 \
+  --user="root" \
+  --name iperf3_exporter_vn \
+  --network host \
   --cap-add=NET_ADMIN \
   --cap-add=NET_RAW \
-  hatanthanh/iperf3_exporter:v3.1.0
+  --restart unless-stopped \
+  hatanthanh/iperf3_exporter:v3.1.1 \
+  --web.listen-address=:9580
 ```
+
+**Docker Command Explanation:**
+- `--user="root"`: Run container as root user for full network access
+- `--name iperf3_exporter_vn`: Custom container name for Vietnamese deployment
+- `--network host`: Use host networking for direct network interface access
+- `--cap-add=NET_ADMIN --cap-add=NET_RAW`: Required capabilities for network testing
+- `--restart unless-stopped`: Auto-restart container unless manually stopped
+- `--web.listen-address=:9580`: Custom port 9580 for metrics endpoint
 
 ### From Binaries
 
@@ -84,7 +95,7 @@ chmod +x iperf3_exporter
 
 The exporter can be configured using command-line flags:
 
-- `--web.listen-address`: Address to listen on (default: `:9579`)
+- `--web.listen-address`: Address to listen on (default: `:9579`, custom: `:9580`)
 - `--web.telemetry-path`: Path under which to expose metrics (default: `/metrics`)
 - `--log.level`: Log level (default: `info`)
 
@@ -96,7 +107,7 @@ Add the following to your `prometheus.yml`:
 scrape_configs:
   - job_name: 'iperf3'
     static_configs:
-      - targets: ['localhost:9579']
+      - targets: ['localhost:9580']
     metrics_path: '/probe'
     params:
       target: ['your-target-host']
@@ -126,7 +137,7 @@ scrape_configs:
 
 ## Metrics
 
-The exporter in v3.1.0 exposes only the most important (core) network metrics. Metrics are now grouped, simplified, and designed for clarity and focus:
+The exporter in v3.1.1 exposes only the most important (core) network metrics. Metrics are now grouped, simplified, and designed for clarity and focus:
 
 **iPerf3 Metrics (Focus Only):**
 - `iperf3_up`: Whether the last iPerf3 probe was successful
@@ -135,7 +146,7 @@ The exporter in v3.1.0 exposes only the most important (core) network metrics. M
 - `iperf3_retransmits`: TCP retransmit count (quality/stability)
 - `iperf3_jitter_ms`: UDP jitter, milliseconds (latency fluctuation)
 
-**Ping Metrics (v3.1.0):**
+**Ping Metrics (v3.1.1):**
 - `ping_up`: Whether ping probe to target was successful (1=success, 0=failure)
 - `ping_packet_loss_percent`: Percent packet loss for the test (0-100%)
 - `ping_latency_average_ms`: Average round-trip latency in milliseconds
