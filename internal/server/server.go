@@ -276,6 +276,7 @@ func (s *Server) probeHandler(w http.ResponseWriter, r *http.Request) {
 		"port", targetPort,
 		"bind_address", bindAddress,
 		"parallel", parallel,
+		"reverse_mode", reverseMode,
 		"bidirectional", bidirectionalMode,
 		"period", runPeriod,
 	)
