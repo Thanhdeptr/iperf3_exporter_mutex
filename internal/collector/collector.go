@@ -276,16 +276,17 @@ func (c *Collector) processIperfResult(ch chan<- prometheus.Metric, result iperf
 	if result.Success {
 		ch <- prometheus.MustNewConstMetric(c.up, prometheus.GaugeValue, 1, labelValues...)
 
-		// Calculate and emit bandwidth
-		var uploadMbps, downloadMbps float64
-		if result.SentBitsPerSecond > 0 {
-			uploadMbps = result.SentBitsPerSecond / 1000000
+		// Calculate and emit bandwidth based on direction
+		direction := labelValues[2] // "upload" or "download"
+		if direction == "upload" {
+			// For upload test: client sends data, use SentBitsPerSecond
+			uploadMbps := result.SentBitsPerSecond / 1000000
+			ch <- prometheus.MustNewConstMetric(c.bandwidthUploadMbps, prometheus.GaugeValue, uploadMbps, labelValues...)
+		} else {
+			// For download test: client receives data, use ReceivedBitsPerSecond
+			downloadMbps := result.ReceivedBitsPerSecond / 1000000
+			ch <- prometheus.MustNewConstMetric(c.bandwidthDownloadMbps, prometheus.GaugeValue, downloadMbps, labelValues...)
 		}
-		if result.ReceivedBitsPerSecond > 0 {
-			downloadMbps = result.ReceivedBitsPerSecond / 1000000
-		}
-		ch <- prometheus.MustNewConstMetric(c.bandwidthUploadMbps, prometheus.GaugeValue, uploadMbps, labelValues...)
-		ch <- prometheus.MustNewConstMetric(c.bandwidthDownloadMbps, prometheus.GaugeValue, downloadMbps, labelValues...)
 
 		// Emit mode-specific metrics
 		if result.UDPMode {
